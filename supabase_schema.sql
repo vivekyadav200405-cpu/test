@@ -89,7 +89,47 @@ grant execute on function public.has_taken_test(text) to anon, authenticated;
 
 
 -- ================================================================
--- 5. ADMIN VIEW QUERIES  (run in SQL Editor as admin)
+-- 5. CODING SUBMISSIONS  (optional practical test — 15 questions)
+-- ================================================================
+
+create table if not exists public.coding_submissions (
+    id              bigserial primary key,
+    full_name       text         not null,
+    emp_code        text         not null,
+    department      text,
+    submitted_at    timestamptz  not null default now(),
+    total_questions int          not null,
+    attempted       int          not null,
+    answers         jsonb,                     -- [{q_id, title, section, language, code, attempted}]
+    created_at      timestamptz  not null default now()
+);
+
+create index if not exists idx_coding_subs_emp_code
+    on public.coding_submissions (emp_code);
+
+create index if not exists idx_coding_subs_submitted_at
+    on public.coding_submissions (submitted_at desc);
+
+alter table public.coding_submissions enable row level security;
+
+drop policy if exists "Anyone can insert coding submission" on public.coding_submissions;
+drop policy if exists "Anyone can read coding submissions"  on public.coding_submissions;
+
+create policy "Anyone can insert coding submission"
+    on public.coding_submissions
+    for insert
+    to anon, authenticated
+    with check (true);
+
+create policy "Anyone can read coding submissions"
+    on public.coding_submissions
+    for select
+    to anon, authenticated
+    using (true);
+
+
+-- ================================================================
+-- 6. ADMIN VIEW QUERIES  (run in SQL Editor as admin)
 -- ----------------------------------------------------------------
 -- Top scorers
 --   select full_name, emp_code, score, percentage, status, submitted_at

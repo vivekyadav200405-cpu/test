@@ -6,6 +6,11 @@
     <meta name="theme-color" content="#c8102e">
     <title>Toyota Boshoku — Training Assessment</title>
     <link rel="stylesheet" href="css/style.css">
+
+    <!-- CodeMirror (VS Code–like editor) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/theme/material-darker.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/hint/show-hint.min.css">
 </head>
 <body>
 
@@ -176,8 +181,139 @@
                 <span id="dbStatus">Saving your result to database…</span>
             </div>
 
+            <!-- Optional coding test prompt -->
+            <div class="coding-prompt">
+                <h3>🧑‍💻 Practical Coding Test</h3>
+                <p>15 coding questions covering HTML, CSS, JavaScript &amp; Python.<br>
+                   <strong>Optional</strong> — you may skip if you don't want to attempt.</p>
+                <div class="prompt-actions">
+                    <button id="skipCodingBtn"  type="button" class="btn btn-light">Skip &amp; Finish</button>
+                    <button id="startCodingBtn" type="button" class="btn btn-primary">Take Coding Test &rarr;</button>
+                </div>
+            </div>
+
             <p class="footer-note">Thank you for taking the assessment.<br>Your response has been recorded.</p>
         </div>
+    </div>
+</section>
+
+
+<!-- ================================================================
+     VIEW 4 :  CODING TEST  (optional)
+     ================================================================ -->
+<section id="codingView" class="view">
+
+    <header class="quiz-header">
+        <div class="header-left">
+            <h2>Practical Coding Test</h2>
+            <p id="codingCandidateInfo" class="candidate-info">—</p>
+        </div>
+        <div class="header-right">
+            <div class="timer-box">
+                <span class="timer-label">Question</span>
+                <span id="codingProgress" class="timer">1 / 15</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="coding-layout">
+
+            <main class="coding-main">
+                <div class="card coding-card">
+
+                    <div class="question-meta">
+                        <span id="codingQNumber">Question 1 of 15</span>
+                        <span id="codingQSection" class="badge">Section</span>
+                    </div>
+
+                    <h3 id="codingQTitle" class="coding-title">—</h3>
+                    <pre id="codingQText" class="coding-question"></pre>
+
+                    <!-- Expected output preview -->
+                    <div class="expected-block">
+                        <div class="expected-header">
+                            <span class="expected-label">🎯 Expected Output</span>
+                            <span class="expected-hint">build something like this</span>
+                        </div>
+                        <div id="expectedPreview" class="expected-preview"></div>
+                    </div>
+
+                    <div class="editor-bar">
+                        <span class="editor-lang" id="editorLangLabel">python</span>
+                        <span class="editor-tip">Use Tab to indent. Editor auto-saves.</span>
+                    </div>
+
+                    <textarea id="codeEditor"></textarea>
+
+                    <div class="nav-buttons coding-nav">
+                        <button id="codingPrevBtn"   type="button" class="btn btn-secondary">&larr; Previous</button>
+                        <button id="codingResetBtn"  type="button" class="btn btn-light">Reset to starter</button>
+                        <button id="codingNextBtn"   type="button" class="btn btn-primary">Next &rarr;</button>
+                        <button id="codingSubmitBtn" type="button" class="btn btn-success hidden">Submit Coding Test</button>
+                    </div>
+
+                </div>
+            </main>
+
+            <aside class="coding-sidebar">
+                <div class="card">
+                    <h4>Coding Palette</h4>
+                    <div id="codingPalette" class="palette"></div>
+                    <div class="legend">
+                        <div><span class="legend-box answered"></span> Attempted</div>
+                        <div><span class="legend-box current"></span> Current</div>
+                        <div><span class="legend-box unattempted"></span> Not visited</div>
+                    </div>
+                    <div class="summary">
+                        <p>Attempted: <strong id="codingAttemptedCount">0</strong> / 15</p>
+                    </div>
+                    <button id="codingSubmitFromPalette" type="button" class="btn btn-success btn-block">
+                        Submit Coding Test
+                    </button>
+                </div>
+            </aside>
+
+        </div>
+    </div>
+</section>
+
+
+<!-- ================================================================
+     VIEW 5 :  CODING REVIEW  (final — shows submitted code)
+     ================================================================ -->
+<section id="codingReviewView" class="view">
+    <div class="container">
+
+        <div class="card result-card" style="max-width: 720px;">
+            <div class="result-header">
+                <h1>Coding Test Submitted</h1>
+                <p class="subtitle">Toyota Boshoku — Your Submission Review</p>
+            </div>
+
+            <div class="result-info">
+                <div class="info-row"><span>Name</span> <strong id="cName">—</strong></div>
+                <div class="info-row"><span>Employee Code</span> <strong id="cEmp">—</strong></div>
+                <div class="info-row"><span>Questions Attempted</span> <strong id="cAttempted">—</strong></div>
+                <div class="info-row"><span>Submitted On</span> <strong id="cDate">—</strong></div>
+            </div>
+
+            <div id="codingDbBanner" class="db-status saving">
+                <span class="db-spinner"></span>
+                <span id="codingDbStatus">Saving your code to database…</span>
+            </div>
+
+            <p style="text-align: center; color: var(--muted); font-size: 13px; margin-bottom: 6px;">
+                Below is the code you submitted (read-only).
+            </p>
+        </div>
+
+        <div id="reviewList" style="max-width: 1000px; margin: 16px auto 0;"></div>
+
+        <div style="text-align: center; margin: 24px 0;">
+            <p class="footer-note">Thank you. Your responses have been recorded.</p>
+        </div>
+
     </div>
 </section>
 
@@ -212,6 +348,27 @@
      SCRIPTS
      ================================================================ -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<!-- CodeMirror core + language modes (VS Code-like editor) -->
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/xml/xml.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/javascript/javascript.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/css/css.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/python/python.min.js"></script>
+
+<!-- Editor helpers: auto-close, bracket match, autocomplete (VS Code-like) -->
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/edit/closebrackets.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/edit/matchbrackets.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/edit/closetag.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/edit/matchtags.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/hint/show-hint.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/hint/xml-hint.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/hint/html-hint.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/hint/css-hint.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/hint/javascript-hint.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/hint/anyword-hint.min.js"></script>
+
 <script src="js/config.js"></script>
 <script src="js/questions.js"></script>
 <script src="js/app.js"></script>

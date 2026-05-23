@@ -6,6 +6,11 @@
     <meta name="theme-color" content="#c8102e">
     <title>Admin — Results Dashboard | Toyota Boshoku</title>
     <link rel="stylesheet" href="css/style.css">
+
+    <!-- CodeMirror (read-only viewer for submitted code) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/theme/material-darker.min.css">
+
     <style>
         /* Admin-specific tweaks */
         .admin-wrap { max-width: 1280px; margin: 0 auto; padding: 16px; }
@@ -108,6 +113,184 @@
             margin-bottom: 14px;
         }
         .header-bar h1 { color: var(--primary); font-size: 22px; }
+
+        /* Tab switcher */
+        .tabs {
+            display: flex;
+            gap: 4px;
+            background: white;
+            padding: 4px;
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            margin-bottom: 12px;
+            width: fit-content;
+        }
+        .tab-btn {
+            padding: 8px 18px;
+            border: none;
+            background: transparent;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            color: #666;
+        }
+        .tab-btn.active {
+            background: var(--primary);
+            color: white;
+        }
+
+        /* Coding panel */
+        .coding-panel { display: none; }
+        .coding-panel.active { display: block; }
+
+        .candidate-card {
+            background: white;
+            border-radius: 10px;
+            padding: 14px 16px;
+            box-shadow: var(--shadow);
+            margin-bottom: 12px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: transform 0.15s;
+        }
+        .candidate-card:hover { transform: translateY(-1px); }
+        .candidate-card .left h4 { font-size: 15px; color: var(--secondary); margin-bottom: 2px; }
+        .candidate-card .left p  { font-size: 12px; color: var(--muted); }
+        .candidate-card .right   { color: var(--primary); font-weight: 600; }
+
+        .code-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.6);
+            z-index: 2000;
+            display: none;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        .code-modal.open { display: block; }
+        .code-modal-inner {
+            background: white;
+            max-width: 1100px;
+            margin: 0 auto;
+            border-radius: 10px;
+            padding: 18px;
+        }
+        .code-modal-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 10px;
+            margin-bottom: 14px;
+        }
+        .code-modal-head h3 { color: var(--primary); }
+        .code-q {
+            background: #f8f9fa;
+            padding: 10px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            margin-bottom: 8px;
+            white-space: pre-wrap;
+        }
+        .code-item { margin-bottom: 16px; }
+        .code-item h5 { font-size: 14px; color: var(--secondary); margin-bottom: 6px; }
+        .code-item .CodeMirror { height: auto !important; min-height: 80px; max-height: 350px; }
+
+        /* ---------- MCQ Review (in modal) ---------- */
+        .mcq-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+        .mcq-stat {
+            text-align: center;
+            padding: 10px;
+            border-radius: 8px;
+            background: #f8f9fa;
+        }
+        .mcq-stat .n   { font-size: 22px; font-weight: 700; display: block; }
+        .mcq-stat .l   { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        .mcq-stat.ok   { background: rgba(40,167,69,0.10); }
+        .mcq-stat.ok .n   { color: var(--success); }
+        .mcq-stat.bad  { background: rgba(220,53,69,0.10); }
+        .mcq-stat.bad .n  { color: var(--danger); }
+        .mcq-stat.skp  { background: rgba(108,117,125,0.10); }
+        .mcq-stat.skp .n  { color: var(--muted); }
+
+        .mcq-q {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+            padding: 12px 14px;
+            margin-bottom: 10px;
+            border-left: 4px solid #ddd;
+        }
+        .mcq-q.correct  { border-left-color: var(--success); }
+        .mcq-q.wrong    { border-left-color: var(--danger);  }
+        .mcq-q.skipped  { border-left-color: var(--muted); opacity: 0.85; }
+
+        .mcq-q-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 8px;
+            align-items: center;
+        }
+        .mcq-q-num  { font-weight: 700; color: var(--primary); font-size: 14px; }
+        .mcq-q-text { font-size: 13.5px; color: #333; margin-bottom: 8px; line-height: 1.5; white-space: pre-wrap; }
+        .mcq-q-pill {
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            color: white;
+        }
+        .mcq-q-pill.correct { background: var(--success); }
+        .mcq-q-pill.wrong   { background: var(--danger); }
+        .mcq-q-pill.skipped { background: var(--muted); }
+
+        .mcq-opts { list-style: none; padding: 0; margin: 0; }
+        .mcq-opts li {
+            padding: 6px 10px;
+            border-radius: 5px;
+            margin-bottom: 3px;
+            font-size: 13px;
+            background: #f8f9fa;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .mcq-opts li.correct {
+            background: rgba(40,167,69,0.15);
+            color: var(--success);
+            font-weight: 600;
+        }
+        .mcq-opts li.picked-wrong {
+            background: rgba(220,53,69,0.15);
+            color: var(--danger);
+            font-weight: 600;
+            text-decoration: line-through;
+        }
+        .mcq-opts .tag {
+            margin-left: auto;
+            font-size: 10px;
+            padding: 1px 8px;
+            border-radius: 8px;
+            background: white;
+            font-weight: 700;
+            letter-spacing: 0.4px;
+        }
+        .mcq-opts li.correct      .tag { background: var(--success); color: white; }
+        .mcq-opts li.picked-wrong .tag { background: var(--danger);  color: white; }
+
+        /* Make MCQ rows clickable */
+        table.results tbody tr { cursor: pointer; }
+
         @media (max-width: 600px) {
             table.results { font-size: 12px; }
             table.results th, table.results td { padding: 8px 6px; }
@@ -151,6 +334,14 @@
             </div>
         </div>
 
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="mcq">MCQ Results</button>
+            <button class="tab-btn"        data-tab="coding">Coding Submissions</button>
+        </div>
+
+        <!-- ============== MCQ PANEL ============== -->
+        <div id="mcqPanel" class="coding-panel active">
+
         <div class="stats">
             <div class="stat"><span class="num" id="statTotal">0</span><span class="label">Total Submissions</span></div>
             <div class="stat"><span class="num" id="statPass">0</span><span class="label">Passed</span></div>
@@ -191,11 +382,55 @@
             </table>
         </div>
 
+        </div><!-- /mcqPanel -->
+
+        <!-- ============== CODING PANEL ============== -->
+        <div id="codingPanel" class="coding-panel">
+
+            <div class="stats">
+                <div class="stat"><span class="num" id="cStatTotal">0</span><span class="label">Coding Submissions</span></div>
+                <div class="stat"><span class="num" id="cStatAvg">0</span><span class="label">Avg. Attempted</span></div>
+            </div>
+
+            <div class="toolbar">
+                <input type="text" id="cSearchBox" placeholder="🔍 Search by name or emp code…">
+            </div>
+
+            <div id="codingList">
+                <p class="empty">Loading…</p>
+            </div>
+        </div><!-- /codingPanel -->
+
     </div>
 </section>
 
+
+<!-- Code-view modal -->
+<div id="codeModal" class="code-modal">
+    <div class="code-modal-inner">
+        <div class="code-modal-head">
+            <div>
+                <h3 id="cmTitle">—</h3>
+                <p id="cmMeta" style="color: var(--muted); font-size: 13px;">—</p>
+            </div>
+            <button id="cmClose" class="btn btn-light">Close ✕</button>
+        </div>
+        <div id="cmBody">Loading…</div>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<!-- CodeMirror (for viewing submitted code in modal) -->
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/xml/xml.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/javascript/javascript.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/css/css.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/python/python.min.js"></script>
+
 <script src="js/config.js"></script>
+<script src="js/questions.js"></script>
 <script src="js/admin.js"></script>
 
 </body>

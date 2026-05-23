@@ -15,7 +15,13 @@
         currentIndex: 0,
         timerHandle: null,
         endTime: 0,
-        submitted: false
+        submitted: false,
+
+        // ---- Coding test state ----
+        codingAnswers: [],       // [{ q_id, language, code, attempted }]
+        codingIndex:   0,
+        codingEditor:  null,     // CodeMirror instance
+        codingSubmitted: false
     };
 
     // ------------------------------------------------------------
@@ -323,6 +329,27 @@
 
         // Push to Supabase
         await pushToSupabase(submission);
+
+        // Wire up the optional coding-test buttons (idempotent)
+        wireCodingPrompt();
+    }
+
+    function wireCodingPrompt() {
+        const startBtn = $("#startCodingBtn");
+        const skipBtn  = $("#skipCodingBtn");
+        if (!startBtn || startBtn._wired) return;
+        startBtn._wired = true;
+
+        startBtn.addEventListener("click", () => {
+            startCodingTest();
+        });
+        skipBtn.addEventListener("click", () => {
+            // Disable so they cannot keep clicking
+            startBtn.disabled = true;
+            skipBtn.disabled  = true;
+            skipBtn.textContent = "Test Finished ✓";
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        });
     }
 
     async function pushToSupabase(submission) {
@@ -381,6 +408,441 @@
 
         const circle = $(".score-circle");
         if (circle) circle.style.setProperty("--p", s.percentage + "%");
+    }
+
+    // ============================================================
+    // VIEW 4 — CODING TEST  (optional, after MCQ)
+    // ============================================================
+    function startCodingTest() {
+        if (typeof CODING_QUESTIONS === "undefined" || !CODING_QUESTIONS.length) {
+            alert("Coding questions not loaded.");
+            return;
+        }
+
+        // Initialise state with starter code
+        state.codingAnswers = CODING_QUESTIONS.map(q => ({
+            q_id:      q.id,
+            title:     q.title,
+            section:   q.section,
+            language:  q.language,
+            code:      q.starter || "",
+            attempted: false
+        }));
+        state.codingIndex = 0;
+
+        // Show view
+        showView("codingView");
+
+        // Header info
+        const c = state.candidate;
+        $("#codingCandidateInfo").textContent =
+            c.fullName + "  •  " + c.empCode +
+            (c.department !== "—" ? "  •  " + c.department : "");
+
+        // Build editor (once)
+        if (!state.codingEditor) {
+            const ta = document.getElementById("codeEditor");
+            state.codingEditor = CodeMirror.fromTextArea(ta, {
+                lineNumbers: true,
+                mode: "python",
+                theme: "material-darker",
+                tabSize: 4,
+                indentUnit: 4,
+                indentWithTabs: false,
+                lineWrapping: true,
+                autoCloseBrackets: true,
+                autoCloseTags: true,                  // auto-close HTML tags
+                matchBrackets: true,
+                matchTags: { bothTags: true },
+                hintOptions: {
+                    completeSingle: false,
+                    closeOnUnfocus: true
+                },
+                extraKeys: {
+                    "Ctrl-Space": "autocomplete",
+                    "Tab":        handleEditorTab
+                }
+            });
+
+            // Save typed code into state on change
+            state.codingEditor.on("change", (cm, change) => {
+                const idx = state.codingIndex;
+                const code = state.codingEditor.getValue();
+                state.codingAnswers[idx].code = code;
+                state.codingAnswers[idx].attempted =
+                    code.trim() !== (CODING_QUESTIONS[idx].starter || "").trim() && code.trim() !== "";
+                updateCodingPalette();
+            });
+
+            // Auto-trigger hint dropdown on alphabetic input (VS Code-like)
+            state.codingEditor.on("inputRead", (cm, change) => {
+                if (change.origin !== "+input") return;
+                const ch = change.text[0];
+                if (!ch || !/^[a-zA-Z]$/.test(ch)) return;
+                // Don't trigger inside strings/comments — let user type freely
+                cm.showHint({ completeSingle: false });
+            });
+        }
+
+        buildCodingPalette();
+        renderCodingQuestion();
+        bindCodingEvents();
+    }
+
+    function buildCodingPalette() {
+        const palette = $("#codingPalette");
+        palette.innerHTML = "";
+        for (let i = 0; i < CODING_QUESTIONS.length; i++) {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "palette-btn";
+            btn.textContent = i + 1;
+            btn.addEventListener("click", () => goToCoding(i));
+            palette.appendChild(btn);
+        }
+    }
+
+    function updateCodingPalette() {
+        const buttons = $("#codingPalette").querySelectorAll(".palette-btn");
+        buttons.forEach((btn, i) => {
+            btn.classList.remove("answered", "current");
+            if (state.codingAnswers[i].attempted) btn.classList.add("answered");
+            if (i === state.codingIndex) btn.classList.add("current");
+        });
+        const n = state.codingAnswers.filter(a => a.attempted).length;
+        $("#codingAttemptedCount").textContent = n;
+    }
+
+    function renderCodingQuestion() {
+        const i = state.codingIndex;
+        const q = CODING_QUESTIONS[i];
+
+        $("#codingQNumber").textContent  = "Question " + (i + 1) + " of " + CODING_QUESTIONS.length;
+        $("#codingProgress").textContent = (i + 1) + " / " + CODING_QUESTIONS.length;
+        $("#codingQSection").textContent = q.section;
+        $("#codingQTitle").textContent   = q.title;
+        $("#codingQText").textContent    = q.q;
+
+        // Render expected output preview
+        renderExpectedPreview(q);
+
+        $("#editorLangLabel").textContent = q.language;
+
+        // Set language mode
+        const modeMap = {
+            "htmlmixed":  "htmlmixed",
+            "javascript": "javascript",
+            "css":        "css",
+            "python":     "python"
+        };
+        state.codingEditor.setOption("mode", modeMap[q.language] || "python");
+
+        // Load this question's saved code
+        state.codingEditor.setValue(state.codingAnswers[i].code || q.starter || "");
+        state.codingEditor.refresh();
+
+        // Buttons
+        $("#codingPrevBtn").disabled = i === 0;
+        if (i === CODING_QUESTIONS.length - 1) {
+            hide($("#codingNextBtn"));
+            show($("#codingSubmitBtn"));
+        } else {
+            show($("#codingNextBtn"));
+            hide($("#codingSubmitBtn"));
+        }
+
+        updateCodingPalette();
+    }
+
+    function goToCoding(i) {
+        if (i < 0 || i >= CODING_QUESTIONS.length) return;
+        state.codingIndex = i;
+        renderCodingQuestion();
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function bindCodingEvents() {
+        // Use one-time guard so re-entry doesn't double-bind
+        if (window._codingEventsBound) return;
+        window._codingEventsBound = true;
+
+        $("#codingPrevBtn").addEventListener("click", () => goToCoding(state.codingIndex - 1));
+        $("#codingNextBtn").addEventListener("click", () => goToCoding(state.codingIndex + 1));
+        $("#codingResetBtn").addEventListener("click", () => {
+            const i = state.codingIndex;
+            const starter = CODING_QUESTIONS[i].starter || "";
+            state.codingEditor.setValue(starter);
+            state.codingAnswers[i].code = starter;
+            state.codingAnswers[i].attempted = false;
+            updateCodingPalette();
+        });
+        $("#codingSubmitBtn").addEventListener("click", confirmCodingSubmit);
+        $("#codingSubmitFromPalette").addEventListener("click", confirmCodingSubmit);
+    }
+
+    // ------------------------------------------------------------
+    // Render expected output preview (HTML iframe OR text block)
+    // ------------------------------------------------------------
+    function renderExpectedPreview(q) {
+        const box = $("#expectedPreview");
+        box.innerHTML = "";
+
+        if (q.expectedHtml) {
+            // Render HTML/CSS/JS output in a sandboxed iframe
+            const iframe = document.createElement("iframe");
+            iframe.setAttribute("sandbox", "allow-scripts");
+            iframe.srcdoc =
+                '<!DOCTYPE html><html><head><style>body{margin:8px;font-family:Arial,sans-serif;}</style></head><body>' +
+                q.expectedHtml + '</body></html>';
+            box.appendChild(iframe);
+        } else if (q.expectedText) {
+            // Render text/console output
+            const pre = document.createElement("pre");
+            pre.className = "text-output";
+            // Add some color to comment lines
+            const lines = q.expectedText.split("\n");
+            pre.innerHTML = lines.map(line => {
+                if (line.trim().startsWith("#") || line.trim().startsWith("//")) {
+                    return '<span class="comment">' + escapeHtml(line) + '</span>';
+                }
+                return escapeHtml(line);
+            }).join("\n");
+            box.appendChild(pre);
+        } else {
+            box.innerHTML = '<p style="color:var(--muted);font-style:italic;font-size:13px;">No preview available for this question.</p>';
+        }
+    }
+
+    // ------------------------------------------------------------
+    // Snippet expansion on Tab (VS Code-like: "h1" + Tab → <h1></h1>)
+    // ------------------------------------------------------------
+    const SNIPPETS = {
+        // HTML / htmlmixed
+        htmlmixed: {
+            "h1":     { code: "<h1>$|</h1>" },
+            "h2":     { code: "<h2>$|</h2>" },
+            "h3":     { code: "<h3>$|</h3>" },
+            "h4":     { code: "<h4>$|</h4>" },
+            "p":      { code: "<p>$|</p>" },
+            "div":    { code: "<div>$|</div>" },
+            "span":   { code: "<span>$|</span>" },
+            "a":      { code: '<a href="$|"></a>' },
+            "img":    { code: '<img src="$|" alt="">' },
+            "ul":     { code: "<ul>\n    <li>$|</li>\n</ul>" },
+            "ol":     { code: "<ol>\n    <li>$|</li>\n</ol>" },
+            "li":     { code: "<li>$|</li>" },
+            "table":  { code: '<table border="1">\n    <tr>\n        <td>$|</td>\n    </tr>\n</table>' },
+            "tr":     { code: "<tr>\n    <td>$|</td>\n</tr>" },
+            "td":     { code: "<td>$|</td>" },
+            "th":     { code: "<th>$|</th>" },
+            "form":   { code: '<form action="">\n    $|\n</form>' },
+            "input":  { code: '<input type="$|" name="">' },
+            "button": { code: "<button>$|</button>" },
+            "style":  { code: "<style>\n    $|\n</style>" },
+            "script": { code: "<script>\n    $|\n<\/script>" },
+            "br":     { code: "<br>" },
+            "hr":     { code: "<hr>" }
+        },
+        // Python
+        python: {
+            "print":  { code: "print($|)" },
+            "input":  { code: 'input("$|")' },
+            "for":    { code: "for $| in range():\n    " },
+            "while":  { code: "while $|:\n    " },
+            "if":     { code: "if $|:\n    " },
+            "ifelse": { code: "if $|:\n    \nelse:\n    " },
+            "def":    { code: "def $|():\n    " },
+            "class":  { code: "class $|:\n    def __init__(self):\n        " },
+            "try":    { code: "try:\n    $|\nexcept Exception as e:\n    print(e)" },
+            "open":   { code: 'open("$|", "r")' },
+            "range":  { code: "range($|)" },
+            "len":    { code: "len($|)" },
+            "list":   { code: "[$|]" },
+            "dict":   { code: "{$|}" }
+        },
+        // JavaScript
+        javascript: {
+            "log":      { code: "console.log($|);" },
+            "console":  { code: "console.log($|);" },
+            "function": { code: "function $|() {\n    \n}" },
+            "fn":       { code: "function $|() {\n    \n}" },
+            "if":       { code: "if ($|) {\n    \n}" },
+            "for":      { code: "for (let i = 0; i < $|; i++) {\n    \n}" },
+            "while":    { code: "while ($|) {\n    \n}" },
+            "fetch":    { code: 'fetch("$|")\n    .then(res => res.json())\n    .then(data => console.log(data));' },
+            "getid":    { code: 'document.getElementById("$|")' },
+            "let":      { code: "let $| = " },
+            "const":    { code: "const $| = " }
+        }
+    };
+
+    function handleEditorTab(cm) {
+        // If text is selected → indent it
+        if (cm.somethingSelected()) {
+            cm.indentSelection("add");
+            return;
+        }
+
+        const cursor = cm.getCursor();
+        const line   = cm.getLine(cursor.line);
+        const before = line.slice(0, cursor.ch);
+        const m      = before.match(/(\w+)$/);
+
+        if (m) {
+            const word = m[1];
+            const mode = cm.getOption("mode");
+            const dict = SNIPPETS[mode] || {};
+            if (dict[word]) {
+                // Replace the word with the snippet template
+                const tpl   = dict[word].code;
+                const start = { line: cursor.line, ch: cursor.ch - word.length };
+
+                // Find cursor placeholder position ($|)
+                const cursorPos = tpl.indexOf("$|");
+                const clean     = tpl.replace("$|", "");
+
+                cm.replaceRange(clean, start, cursor);
+
+                // Move cursor to placeholder if it existed
+                if (cursorPos >= 0) {
+                    // Compute new line/ch from start position + offset
+                    const linesBefore = clean.slice(0, cursorPos).split("\n");
+                    const newLine = start.line + linesBefore.length - 1;
+                    const newCh   = linesBefore.length === 1
+                        ? start.ch + linesBefore[0].length
+                        : linesBefore[linesBefore.length - 1].length;
+                    cm.setCursor({ line: newLine, ch: newCh });
+                }
+                return;
+            }
+        }
+
+        // Default: insert 4 spaces
+        cm.replaceSelection("    ", "end");
+    }
+
+    function confirmCodingSubmit() {
+        const attempted = state.codingAnswers.filter(a => a.attempted).length;
+        const total     = state.codingAnswers.length;
+        const ok = confirm(
+            "Submit coding test?\n\n" +
+            "Attempted: " + attempted + " of " + total + " questions.\n" +
+            "Once submitted, you cannot change your code."
+        );
+        if (ok) submitCodingTest();
+    }
+
+    async function submitCodingTest() {
+        if (state.codingSubmitted) return;
+        state.codingSubmitted = true;
+
+        show($("#loaderOverlay"));
+
+        const attempted = state.codingAnswers.filter(a => a.attempted).length;
+        const payload = {
+            full_name:       state.candidate.fullName,
+            emp_code:        state.candidate.empCode,
+            department:      state.candidate.department,
+            submitted_at:    new Date().toISOString(),
+            total_questions: state.codingAnswers.length,
+            attempted:       attempted,
+            answers:         state.codingAnswers   // jsonb in DB
+        };
+
+        // Render review immediately
+        renderCodingReview(payload);
+        hide($("#loaderOverlay"));
+        showView("codingReviewView");
+
+        // Save to DB
+        await saveCodingToSupabase(payload);
+    }
+
+    async function saveCodingToSupabase(payload) {
+        const banner = $("#codingDbBanner");
+        const text   = $("#codingDbStatus");
+        banner.classList.remove("success", "error");
+        banner.classList.add("saving");
+        text.textContent = "Saving your code to database…";
+
+        try {
+            if (typeof SUPABASE_CONFIG === "undefined"
+                || !SUPABASE_CONFIG.url
+                || !SUPABASE_CONFIG.anonKey
+                || SUPABASE_CONFIG.anonKey.indexOf("REPLACE_WITH") === 0) {
+                throw new Error("Supabase config is not set.");
+            }
+            if (!window.supabase) throw new Error("Supabase client did not load.");
+
+            const sb = window.supabase.createClient(
+                SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey
+            );
+            const { error } = await sb
+                .from("coding_submissions")
+                .insert(payload);
+            if (error) throw error;
+
+            banner.classList.remove("saving", "error");
+            banner.classList.add("success");
+            text.textContent = "✓ Your code has been saved to the database.";
+        } catch (err) {
+            console.error("Coding insert failed:", err);
+            banner.classList.remove("saving", "success");
+            banner.classList.add("error");
+            text.textContent = "⚠ Could not save: " + (err.message || err);
+        }
+    }
+
+    function renderCodingReview(payload) {
+        $("#cName").textContent      = payload.full_name;
+        $("#cEmp").textContent       = payload.emp_code;
+        $("#cAttempted").textContent = payload.attempted + " / " + payload.total_questions;
+        $("#cDate").textContent      = new Date(payload.submitted_at).toLocaleString();
+
+        const list = $("#reviewList");
+        list.innerHTML = "";
+
+        state.codingAnswers.forEach((a, i) => {
+            const q = CODING_QUESTIONS[i];
+            const item = document.createElement("div");
+            item.className = "review-item " + (a.attempted ? "attempted" : "skipped");
+
+            const head = document.createElement("div");
+            head.className = "review-head";
+            head.innerHTML =
+                '<span class="review-num">Q' + q.id + '</span>' +
+                '<span class="review-title">' + escapeHtml(q.title) +
+                ' &nbsp;<small style="color:var(--muted)">[' + q.language + ']</small></span>' +
+                '<span class="review-status ' + (a.attempted ? '' : 'skipped') + '">' +
+                (a.attempted ? 'ATTEMPTED' : 'NOT ATTEMPTED') + '</span>';
+            item.appendChild(head);
+
+            if (a.attempted) {
+                const ta = document.createElement("textarea");
+                item.appendChild(ta);
+                list.appendChild(item);
+                CodeMirror.fromTextArea(ta, {
+                    value: a.code,
+                    lineNumbers: true,
+                    mode: a.language,
+                    theme: "material-darker",
+                    readOnly: true,
+                    lineWrapping: true
+                }).setValue(a.code);
+            } else {
+                const empty = document.createElement("div");
+                empty.className = "empty-code";
+                empty.textContent = "// No code submitted for this question.";
+                item.appendChild(empty);
+                list.appendChild(item);
+            }
+        });
+    }
+
+    function escapeHtml(s) {
+        return String(s == null ? "" : s)
+            .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     }
 
     // ------------------------------------------------------------
