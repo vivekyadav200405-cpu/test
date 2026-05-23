@@ -1,0 +1,36 @@
+# ============================================================
+#  .gitignore — files that should NEVER reach the public repo
+# ============================================================
+
+# ----- Sensitive: answer keys + internal docs -----
+Objective_Paper_50Q.md
+Coding_Paper_15Q.md
+Create_GoogleForm_Script.gs
+Answer_List_50Q.md
+
+# ----- OS junk -----
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# ----- Editor / IDE -----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ----- Logs -----
+*.log
+npm-debug.log*
+
+# ----- Env files (just in case) -----
+.env
+.env.*
+*.secret
+secrets.json
+
+# ----- Backups -----
+*.bak
+*.backup
+*.old

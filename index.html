@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#c8102e">
+    <title>Toyota Boshoku — Training Assessment</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ================================================================
+     VIEW 1 :  WELCOME / LOGIN
+     ================================================================ -->
+<section id="welcomeView" class="view active">
+    <div class="container">
+        <div class="card welcome-card">
+
+            <div class="brand">
+                <h1>Toyota Boshoku</h1>
+                <p class="subtitle">Device India — Training Assessment Portal</p>
+            </div>
+
+            <div class="info-box">
+                <h3>Test Instructions</h3>
+                <ul>
+                    <li><strong>Total Questions:</strong> 50 (MCQ)</li>
+                    <li><strong>Marks:</strong> 50 (1 mark each)</li>
+                    <li><strong>Duration:</strong> 30 minutes</li>
+                    <li>Each question has 4 options — pick one.</li>
+                    <li>You can move between questions using Next / Previous.</li>
+                    <li>Click <strong>Submit Test</strong> to save your result.</li>
+                    <li>Each Employee Code can submit the test <strong>only once</strong>.</li>
+                </ul>
+            </div>
+
+            <form id="loginForm" class="form" novalidate>
+                <div class="form-group">
+                    <label for="fullName">Full Name <span class="req">*</span></label>
+                    <input type="text" id="fullName" autocomplete="name" placeholder="Your complete name" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="empCode">Employee Code <span class="req">*</span></label>
+                    <input type="text" id="empCode" autocomplete="off" placeholder="Your employee code" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="department">Department</label>
+                    <input type="text" id="department" autocomplete="off" placeholder="e.g. IT, HR, Production">
+                </div>
+
+                <div id="loginError" class="alert alert-error hidden"></div>
+
+                <button type="submit" id="startBtn" class="btn btn-primary btn-block">
+                    Start Test &nbsp;&rarr;
+                </button>
+            </form>
+
+            <p class="footer-note">All the best!  &mdash;  Training Team</p>
+            <p class="footer-note" style="margin-top: 6px;">
+                <a href="admin.html"   style="color: var(--muted); font-size: 11px;">Admin</a>
+                &nbsp;&middot;&nbsp;
+                <a href="answers.html" style="color: var(--muted); font-size: 11px;">Answer Key</a>
+            </p>
+        </div>
+    </div>
+</section>
+
+
+<!-- ================================================================
+     VIEW 2 :  QUIZ
+     ================================================================ -->
+<section id="quizView" class="view">
+
+    <header class="quiz-header">
+        <div class="header-left">
+            <h2>Training Assessment</h2>
+            <p id="candidateInfo" class="candidate-info">—</p>
+        </div>
+        <div class="header-right">
+            <div class="timer-box">
+                <span class="timer-label">Time Left</span>
+                <span id="timer" class="timer">30:00</span>
+            </div>
+            <button id="paletteToggle" class="btn btn-mini" type="button" aria-label="Open palette">☰</button>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="quiz-layout">
+
+            <main class="quiz-main">
+                <div class="card question-card">
+                    <div class="question-meta">
+                        <span id="qNumber">Question 1 of 50</span>
+                        <span id="qSection" class="badge">Section</span>
+                    </div>
+
+                    <h3 id="qText" class="question-text">Loading…</h3>
+
+                    <div id="optionsList" class="options-list"></div>
+
+                    <div class="nav-buttons">
+                        <button id="prevBtn" type="button" class="btn btn-secondary">&larr; Previous</button>
+                        <button id="clearBtn" type="button" class="btn btn-light">Clear</button>
+                        <button id="nextBtn" type="button" class="btn btn-primary">Next &rarr;</button>
+                        <button id="submitBtn" type="button" class="btn btn-success hidden">Submit Test</button>
+                    </div>
+                </div>
+            </main>
+
+            <aside class="quiz-sidebar" id="quizSidebar">
+                <div class="card">
+                    <div class="sidebar-head">
+                        <h4>Question Palette</h4>
+                        <button id="paletteClose" type="button" class="btn-icon" aria-label="Close">&times;</button>
+                    </div>
+
+                    <div id="palette" class="palette"></div>
+
+                    <div class="legend">
+                        <div><span class="legend-box answered"></span> Answered</div>
+                        <div><span class="legend-box current"></span> Current</div>
+                        <div><span class="legend-box unattempted"></span> Not visited</div>
+                    </div>
+
+                    <div class="summary">
+                        <p>Answered: <strong id="answeredCount">0</strong> / 50</p>
+                    </div>
+
+                    <button id="submitFromPalette" type="button" class="btn btn-success btn-block">
+                        Submit Test
+                    </button>
+                </div>
+            </aside>
+
+        </div>
+    </div>
+
+</section>
+
+
+<!-- ================================================================
+     VIEW 3 :  RESULT
+     ================================================================ -->
+<section id="resultView" class="view">
+    <div class="container">
+        <div class="card result-card">
+
+            <div class="result-header">
+                <h1>Test Submitted</h1>
+                <p class="subtitle">Toyota Boshoku — Training Assessment</p>
+            </div>
+
+            <div class="result-info">
+                <div class="info-row"><span>Name</span> <strong id="rName">—</strong></div>
+                <div class="info-row"><span>Employee Code</span> <strong id="rEmp">—</strong></div>
+                <div class="info-row"><span>Department</span> <strong id="rDept">—</strong></div>
+                <div class="info-row"><span>Submitted On</span> <strong id="rDate">—</strong></div>
+            </div>
+
+            <div class="score-box">
+                <div class="score-circle">
+                    <span id="scoreValue">0</span>
+                    <span class="score-total">/ 50</span>
+                </div>
+                <div class="score-meta">
+                    <p><span class="meta-label">Percentage</span> <strong id="scorePercent">0%</strong></p>
+                    <p><span class="meta-label">Status</span> <span id="scoreStatus" class="status-badge">—</span></p>
+                </div>
+            </div>
+
+            <div id="dbBanner" class="db-status saving">
+                <span class="db-spinner"></span>
+                <span id="dbStatus">Saving your result to database…</span>
+            </div>
+
+            <p class="footer-note">Thank you for taking the assessment.<br>Your response has been recorded.</p>
+        </div>
+    </div>
+</section>
+
+
+<!-- ================================================================
+     MODAL  (confirm submit)
+     ================================================================ -->
+<div id="confirmModal" class="modal hidden">
+    <div class="modal-content card">
+        <h3>Submit Test?</h3>
+        <p>You have answered <strong id="modalAnswered">0</strong> out of 50 questions.</p>
+        <p>Once submitted, you cannot change your answers.</p>
+        <div class="modal-actions">
+            <button id="cancelSubmit" type="button" class="btn btn-secondary">Cancel</button>
+            <button id="confirmSubmit" type="button" class="btn btn-success">Yes, Submit</button>
+        </div>
+    </div>
+</div>
+
+<!-- ================================================================
+     LOADER  (submission in progress)
+     ================================================================ -->
+<div id="loaderOverlay" class="loader-overlay hidden">
+    <div class="loader-box">
+        <div class="spinner"></div>
+        <p>Submitting your test…</p>
+    </div>
+</div>
+
+
+<!-- ================================================================
+     SCRIPTS
+     ================================================================ -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/questions.js"></script>
+<script src="js/app.js"></script>
+
+</body>
+</html>
