@@ -13,6 +13,10 @@ Thumbs.db
 .DS_Store
 desktop.ini
 
+# ----- MS Office temp/lock files -----
+~$*
+*.tmp
+
 # ----- Editor / IDE -----
 .vscode/
 .idea/
