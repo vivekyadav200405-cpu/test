@@ -118,11 +118,12 @@
                 // 2) Generate device fingerprint
                 state.deviceFp = await generateDeviceFingerprint();
 
-                // 3) Local marker check — if this device already submitted this plan, block
-                const localKey = "tb_done_plan_" + (window.ACTIVE_PLAN_ID || "0");
-                if (localStorage.getItem(localKey) === "1") {
+                // 3) Local marker check — multi-storage (localStorage + sessionStorage + cookie)
+                const planId = window.ACTIVE_PLAN_ID || "0";
+                if (deviceAlreadySubmitted(planId)) {
                     errBox.innerHTML =
                         "❌ This device has already submitted the current test plan.<br>" +
+                        "<small>Detected from local device record.</small><br>" +
                         "If you believe this is a mistake, contact the trainer.";
                     show(errBox);
                     return;
@@ -162,6 +163,53 @@
 
         form.addEventListener("submit", submit);
         startBtn.addEventListener("click", submit);   // belt + suspenders
+    }
+
+    // ------------------------------------------------------------
+    // DEVICE SUBMISSION MARKERS (multi-storage redundancy)
+    // ------------------------------------------------------------
+    function deviceAlreadySubmitted(planId) {
+        const key = "tb_done_plan_" + planId;
+        // 1) localStorage
+        try { if (localStorage.getItem(key) === "1") return true; } catch (e) {}
+        // 2) sessionStorage (less useful — but in case of incognito)
+        try { if (sessionStorage.getItem(key) === "1") return true; } catch (e) {}
+        // 3) cookie
+        try {
+            const cookies = document.cookie.split(";").map(c => c.trim());
+            if (cookies.indexOf(key + "=1") !== -1) return true;
+        } catch (e) {}
+        return false;
+    }
+
+    function markDeviceSubmitted(planId, empCode) {
+        const key   = "tb_done_plan_" + planId;
+        const meta  = JSON.stringify({ emp: empCode, when: new Date().toISOString() });
+
+        try { localStorage.setItem(key, "1"); }              catch (e) {}
+        try { localStorage.setItem(key + "_meta", meta); }   catch (e) {}
+        try { sessionStorage.setItem(key, "1"); }            catch (e) {}
+        try {
+            // 1 year cookie
+            const exp = new Date(Date.now() + 365 * 86400 * 1000).toUTCString();
+            document.cookie = key + "=1; expires=" + exp + "; path=/; SameSite=Lax";
+        } catch (e) {}
+        // IndexedDB as the deepest layer
+        try {
+            const req = indexedDB.open("tb_quiz", 1);
+            req.onupgradeneeded = (ev) => {
+                const db = ev.target.result;
+                if (!db.objectStoreNames.contains("done"))
+                    db.createObjectStore("done");
+            };
+            req.onsuccess = (ev) => {
+                try {
+                    const db = ev.target.result;
+                    const tx = db.transaction("done", "readwrite");
+                    tx.objectStore("done").put({emp: empCode, when: new Date().toISOString()}, key);
+                } catch (e) {}
+            };
+        } catch (e) {}
     }
 
     // ------------------------------------------------------------
@@ -696,11 +744,8 @@
             user_agent:      (navigator.userAgent || "").slice(0, 500)
         };
 
-        // Mark this device as having completed this plan (local guard)
-        try {
-            const localKey = "tb_done_plan_" + (window.ACTIVE_PLAN_ID || "0");
-            localStorage.setItem(localKey, "1");
-        } catch (e) {}
+        // Mark this device as having completed this plan (multi-storage)
+        markDeviceSubmitted(window.ACTIVE_PLAN_ID || "0", state.candidate.empCode);
 
         // Render result (before DB call) so user sees something fast
         renderResult(submission);
@@ -730,6 +775,34 @@
             skipBtn.textContent = "Test Finished ✓";
             window.scrollTo({ top: 0, behavior: "smooth" });
         });
+
+        // Wire logout buttons (on result view + coding review)
+        const logoutR = $("#logoutBtnResult");
+        const logoutC = $("#logoutBtnCoding");
+        if (logoutR && !logoutR._wired) {
+            logoutR._wired = true;
+            logoutR.addEventListener("click", doLogout);
+        }
+        if (logoutC && !logoutC._wired) {
+            logoutC._wired = true;
+            logoutC.addEventListener("click", doLogout);
+        }
+    }
+
+    function doLogout() {
+        if (!confirm("Logout and close this session? You won't be able to retake this test.")) return;
+        // Clear any session candidate info but KEEP device markers (so re-attempt is still blocked)
+        try {
+            sessionStorage.clear();
+        } catch (e) {}
+        // Don't clear localStorage — we want the duplicate-prevention markers to persist.
+        // Reload to fresh welcome page
+        state.fullscreenWanted = false;
+        state.submitted = true;
+        try {
+            if (document.exitFullscreen) document.exitFullscreen().catch(()=>{});
+        } catch (e) {}
+        window.location.href = "index.html";
     }
 
     async function pushToSupabase(submission) {
