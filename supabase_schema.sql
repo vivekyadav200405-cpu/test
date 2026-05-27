@@ -238,6 +238,53 @@ $$;
 grant execute on function public.get_my_submission(text) to anon, authenticated;
 
 
+-- ================================================================
+-- 3c. QUESTIONS TABLE  (admin-managed question pool)
+-- ----------------------------------------------------------------
+-- Static JS pool stays in question_pool.js for fast load.
+-- Anything admin adds via the dashboard goes into this table and
+-- is merged into the pool at test start (frontend fetch).
+-- ================================================================
+create table if not exists public.questions (
+    id         bigserial primary key,
+    topic      text         not null check (topic in ('HTML','CSS','JS','PY')),
+    level      text         not null check (level in ('easy','medium','hard')) default 'medium',
+    q          text         not null,
+    opt_a      text         not null,
+    opt_b      text         not null,
+    opt_c      text         not null,
+    opt_d      text         not null,
+    ans        int          not null check (ans between 0 and 3),
+    is_active  boolean      not null default true,
+    created_at timestamptz  not null default now(),
+    updated_at timestamptz  not null default now()
+);
+
+create index if not exists idx_questions_topic_level
+    on public.questions (topic, level)
+    where is_active = true;
+
+alter table public.questions enable row level security;
+
+drop policy if exists "Anyone can read questions"   on public.questions;
+drop policy if exists "Anyone can insert questions" on public.questions;
+drop policy if exists "Anyone can write questions"  on public.questions;
+drop policy if exists "Anyone can delete questions" on public.questions;
+
+-- Open RLS — UI password protects edits
+create policy "Anyone can read questions"
+    on public.questions for select to anon, authenticated using (true);
+
+create policy "Anyone can insert questions"
+    on public.questions for insert to anon, authenticated with check (true);
+
+create policy "Anyone can write questions"
+    on public.questions for update to anon, authenticated using (true) with check (true);
+
+create policy "Anyone can delete questions"
+    on public.questions for delete to anon, authenticated using (true);
+
+
 -- ----------------------------------------------------------------
 -- RPC: activate a plan (deactivates all others atomically)
 -- ----------------------------------------------------------------

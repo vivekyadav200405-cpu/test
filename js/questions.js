@@ -62,6 +62,10 @@ async function loadTestConfig() {
 
         // Cache locally so even offline we use last known
         try { localStorage.setItem("tb_test_config", JSON.stringify(data)); } catch (_) {}
+
+        // Also fetch admin-added DB questions and merge into POOL
+        try { await mergeDbQuestions(sb); } catch (e) { console.warn("DB questions merge failed:", e); }
+
         return data;
     } catch (e) {
         console.warn("loadTestConfig failed:", e);
@@ -89,6 +93,43 @@ function pickRandom(arr, n) {
     }
     return copy.slice(0, Math.min(n, copy.length));
 }
+
+/**
+ * Fetch admin-added questions from DB and merge into POOL.
+ * DB rows shape:  { id, topic, level, q, opt_a, opt_b, opt_c, opt_d, ans, is_active }
+ * Pool rows shape: { id, topic, level, q, opts:[4], ans }
+ */
+async function mergeDbQuestions(sb) {
+    if (typeof POOL === "undefined") return;
+    const { data, error } = await sb
+        .from("questions")
+        .select("*")
+        .eq("is_active", true);
+    if (error || !data || !data.length) return;
+
+    let merged = 0;
+    data.forEach(r => {
+        const topic = r.topic;
+        if (!POOL[topic]) return;
+        POOL[topic].push({
+            id:    "db" + r.id,
+            topic: r.topic,
+            level: r.level || "medium",
+            q:     r.q,
+            opts:  [r.opt_a, r.opt_b, r.opt_c, r.opt_d],
+            ans:   Number(r.ans)
+        });
+        merged++;
+    });
+    if (merged) {
+        console.log("[pool] merged", merged, "DB questions. New totals:",
+            "HTML=" + POOL.HTML.length,
+            "CSS="  + POOL.CSS.length,
+            "JS="   + POOL.JS.length,
+            "PY="   + POOL.PY.length);
+    }
+}
+
 
 /**
  * Build one user's randomised 50-Q test.

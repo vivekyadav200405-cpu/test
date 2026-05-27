@@ -64,6 +64,215 @@
     // Supabase fetch
     // ------------------------------------------------------------
     // ============================================================
+    // QUESTIONS MANAGER  (admin-added DB questions)
+    // ============================================================
+    let allQuestions = [];     // cached from DB
+    let editingQId   = null;   // null = new question
+
+    async function loadQuestions() {
+        const tbody = $("#qTbody");
+        tbody.innerHTML = '<tr><td colspan="7" class="empty">Loading…</td></tr>';
+        try {
+            const sb = getSupabaseClient();
+            const { data, error } = await sb
+                .from("questions")
+                .select("*")
+                .order("id", { ascending: false });
+            if (error) throw error;
+            allQuestions = data || [];
+            renderQStats();
+            renderQTable();
+        } catch (e) {
+            tbody.innerHTML =
+                '<tr><td colspan="7" class="empty" style="color:var(--danger);">' +
+                'Error: ' + (e.message || e) + '</td></tr>';
+        }
+    }
+
+    function renderQStats() {
+        $("#qStatTotal").textContent = allQuestions.length;
+        const c = { HTML:0, CSS:0, JS:0, PY:0 };
+        allQuestions.forEach(q => { if (c[q.topic] !== undefined) c[q.topic]++; });
+        $("#qStatHtml").textContent = c.HTML;
+        $("#qStatCss").textContent  = c.CSS;
+        $("#qStatJs").textContent   = c.JS;
+        $("#qStatPy").textContent   = c.PY;
+    }
+
+    function renderQTable() {
+        const q   = ($("#qSearch").value || "").trim().toLowerCase();
+        const ft  = $("#qFilterTopic").value;
+        const fl  = $("#qFilterLevel").value;
+        const tbody = $("#qTbody");
+
+        const filtered = allQuestions.filter(r => {
+            if (ft && r.topic !== ft) return false;
+            if (fl && r.level !== fl) return false;
+            if (q && !(r.q || "").toLowerCase().includes(q)) return false;
+            return true;
+        });
+
+        if (!filtered.length) {
+            tbody.innerHTML = '<tr><td colspan="7" class="empty">No questions match your filter.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = filtered.map(r => {
+            const letters = ['A','B','C','D'];
+            const correct = letters[r.ans] || "?";
+            const preview = (r.q || "").length > 80 ? (r.q.slice(0, 80) + "…") : r.q;
+            return (
+                '<tr>' +
+                    '<td style="color:var(--muted);">' + r.id + '</td>' +
+                    '<td><span class="pill" style="background:rgba(200,16,46,0.10);color:var(--primary);">' + escapeHtml(r.topic) + '</span></td>' +
+                    '<td><small>' + escapeHtml(r.level) + '</small></td>' +
+                    '<td><div style="font-size:13px;line-height:1.4;white-space:normal;">' + escapeHtml(preview) + '</div></td>' +
+                    '<td><strong style="color:var(--success);">' + correct + ')</strong></td>' +
+                    '<td>' + (r.is_active
+                        ? '<span class="pill pass">YES</span>'
+                        : '<span class="pill fail">NO</span>') + '</td>' +
+                    '<td style="text-align:right;">' +
+                        '<button data-qact="edit"   data-id="' + r.id + '" class="btn btn-light"   style="padding:4px 10px;min-height:28px;font-size:12px;">Edit</button> ' +
+                        '<button data-qact="delete" data-id="' + r.id + '" class="btn btn-light"   style="padding:4px 10px;min-height:28px;font-size:12px;color:var(--danger);">Del</button>' +
+                    '</td>' +
+                '</tr>'
+            );
+        }).join("");
+
+        tbody.querySelectorAll("button[data-qact]").forEach(b => {
+            b.addEventListener("click", () => {
+                const id  = Number(b.dataset.id);
+                const act = b.dataset.qact;
+                if (act === "edit")   openQuestionForm(id);
+                if (act === "delete") deleteQuestion(id);
+            });
+        });
+    }
+
+    function openQuestionForm(id) {
+        editingQId = id;
+        if (id) {
+            const r = allQuestions.find(x => x.id === id);
+            if (!r) return;
+            $("#qFormTitle").textContent = "Edit Question #" + r.id;
+            $("#qfTopic").value  = r.topic;
+            $("#qfLevel").value  = r.level;
+            $("#qfText").value   = r.q;
+            $("#qfOptA").value   = r.opt_a;
+            $("#qfOptB").value   = r.opt_b;
+            $("#qfOptC").value   = r.opt_c;
+            $("#qfOptD").value   = r.opt_d;
+            $("#qfActive").checked = !!r.is_active;
+            // Set correct radio
+            const rad = document.querySelector('input[name="qfAns"][value="' + r.ans + '"]');
+            if (rad) rad.checked = true;
+        } else {
+            $("#qFormTitle").textContent = "New Question";
+            $("#qfTopic").value = "HTML";
+            $("#qfLevel").value = "medium";
+            $("#qfText").value  = "";
+            $("#qfOptA").value  = "";
+            $("#qfOptB").value  = "";
+            $("#qfOptC").value  = "";
+            $("#qfOptD").value  = "";
+            $("#qfActive").checked = true;
+            document.querySelectorAll('input[name="qfAns"]').forEach(r => r.checked = false);
+        }
+        $("#qFormStatus").style.display = "none";
+        $("#qFormModal").classList.add("open");
+    }
+
+    function closeQuestionForm() {
+        $("#qFormModal").classList.remove("open");
+    }
+
+    async function saveQuestion() {
+        const q     = $("#qfText").value.trim();
+        const optA  = $("#qfOptA").value.trim();
+        const optB  = $("#qfOptB").value.trim();
+        const optC  = $("#qfOptC").value.trim();
+        const optD  = $("#qfOptD").value.trim();
+        const ansEl = document.querySelector('input[name="qfAns"]:checked');
+
+        if (!q)    return showQFormErr("Question text is required.");
+        if (!optA || !optB || !optC || !optD) return showQFormErr("All 4 options are required.");
+        if (!ansEl) return showQFormErr("Select the correct option (A/B/C/D radio).");
+
+        const payload = {
+            topic:     $("#qfTopic").value,
+            level:     $("#qfLevel").value,
+            q:         q,
+            opt_a:     optA,
+            opt_b:     optB,
+            opt_c:     optC,
+            opt_d:     optD,
+            ans:       Number(ansEl.value),
+            is_active: $("#qfActive").checked,
+            updated_at: new Date().toISOString()
+        };
+
+        try {
+            const sb = getSupabaseClient();
+            let res;
+            if (editingQId) {
+                res = await sb.from("questions").update(payload).eq("id", editingQId);
+            } else {
+                res = await sb.from("questions").insert(payload);
+            }
+            if (res.error) throw res.error;
+            closeQuestionForm();
+            showQStatus("✓ Saved.", "ok");
+            await loadQuestions();
+        } catch (e) {
+            showQFormErr("Save failed: " + (e.message || e));
+        }
+    }
+
+    async function deleteQuestion(id) {
+        const r = allQuestions.find(x => x.id === id);
+        if (!r) return;
+        if (!confirm("Delete question #" + id + "?\n\n" + r.q.slice(0, 100))) return;
+        try {
+            const sb = getSupabaseClient();
+            const { error } = await sb.from("questions").delete().eq("id", id);
+            if (error) throw error;
+            showQStatus("✓ Deleted.", "ok");
+            await loadQuestions();
+        } catch (e) {
+            showQStatus("Delete failed: " + (e.message || e), "err");
+        }
+    }
+
+    function showQStatus(msg, type) {
+        const el = $("#qStatus");
+        el.textContent = msg;
+        el.style.display = "block";
+        el.style.padding = "10px 14px";
+        el.style.borderRadius = "6px";
+        el.style.marginBottom = "14px";
+        if (type === "ok") {
+            el.style.background = "rgba(40,167,69,0.12)";
+            el.style.color = "var(--success)";
+        } else {
+            el.style.background = "rgba(220,53,69,0.12)";
+            el.style.color = "var(--danger)";
+        }
+        setTimeout(() => { el.style.display = "none"; }, 5000);
+    }
+
+    function showQFormErr(msg) {
+        const el = $("#qFormStatus");
+        el.textContent = msg;
+        el.style.display = "block";
+        el.style.padding = "10px 14px";
+        el.style.borderRadius = "6px";
+        el.style.marginBottom = "14px";
+        el.style.background = "rgba(220,53,69,0.12)";
+        el.style.color = "var(--danger)";
+    }
+
+
+    // ============================================================
     // TEST PLANNER  (multi-plan)
     // ============================================================
     let editingPlanId = null;
@@ -790,12 +999,40 @@
                 $$(".tab-btn").forEach(b => b.classList.remove("active"));
                 btn.classList.add("active");
                 $$(".coding-panel").forEach(p => p.classList.remove("active"));
-                const panelId = tab === "mcq"     ? "mcqPanel"
-                              : tab === "coding"  ? "codingPanel"
-                              : "plannerPanel";
+                const panelId = tab === "mcq"       ? "mcqPanel"
+                              : tab === "coding"    ? "codingPanel"
+                              : tab === "questions" ? "questionsPanel"
+                              :                       "plannerPanel";
                 $("#" + panelId).classList.add("active");
-                if (tab === "planner") loadPlannerConfig();
+                if (tab === "planner")   loadPlannerConfig();
+                if (tab === "questions") loadQuestions();
             });
+        });
+
+        // ----- Questions Manager buttons -----
+        const qReload = $("#qReload");
+        const qNew    = $("#qNew");
+        const qfSave  = $("#qfSave");
+        const qfCancel = $("#qfCancel");
+        const qfClose  = $("#qFormClose");
+        if (qReload)  qReload.addEventListener("click",  loadQuestions);
+        if (qNew)     qNew.addEventListener("click",     () => openQuestionForm(null));
+        if (qfSave)   qfSave.addEventListener("click",   saveQuestion);
+        if (qfCancel) qfCancel.addEventListener("click", closeQuestionForm);
+        if (qfClose)  qfClose.addEventListener("click",  closeQuestionForm);
+
+        // Filters
+        const qSearch       = $("#qSearch");
+        const qFilterTopic  = $("#qFilterTopic");
+        const qFilterLevel  = $("#qFilterLevel");
+        if (qSearch)      qSearch.addEventListener("input",       renderQTable);
+        if (qFilterTopic) qFilterTopic.addEventListener("change", renderQTable);
+        if (qFilterLevel) qFilterLevel.addEventListener("change", renderQTable);
+
+        // Close question modal on backdrop click
+        const qFormModal = $("#qFormModal");
+        if (qFormModal) qFormModal.addEventListener("click", (e) => {
+            if (e.target.id === "qFormModal") closeQuestionForm();
         });
 
         // ----- Planner buttons -----

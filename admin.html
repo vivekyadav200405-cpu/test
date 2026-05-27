@@ -338,6 +338,7 @@
             <button class="tab-btn active" data-tab="mcq">MCQ Results</button>
             <button class="tab-btn"        data-tab="coding">Coding Submissions</button>
             <button class="tab-btn"        data-tab="planner">⚙ Test Planner</button>
+            <button class="tab-btn"        data-tab="questions">📝 Questions</button>
         </div>
 
         <!-- ============== MCQ PANEL ============== -->
@@ -510,6 +511,141 @@
                 </p>
             </div>
         </div><!-- /plannerPanel -->
+
+        <!-- ============== QUESTIONS MANAGER PANEL ============== -->
+        <div id="questionsPanel" class="coding-panel">
+            <div class="header-bar">
+                <h1 style="font-size:22px;">📝 Question Manager</h1>
+                <div style="display:flex;gap:8px;">
+                    <button id="qReload" type="button" class="btn btn-light">⟳ Reload</button>
+                    <button id="qNew"    type="button" class="btn btn-primary">+ New Question</button>
+                </div>
+            </div>
+
+            <p style="color:var(--muted);font-size:13px;margin-bottom:14px;">
+                Questions added here are stored in the database and automatically merged
+                into the question pool at test start. The built-in JS pool (~1090 Qs)
+                remains untouched.
+            </p>
+
+            <div id="qStatus" class="alert" style="display:none;"></div>
+
+            <div class="stats">
+                <div class="stat"><span class="num" id="qStatTotal">0</span><span class="label">DB Questions</span></div>
+                <div class="stat"><span class="num" id="qStatHtml">0</span><span class="label">HTML</span></div>
+                <div class="stat"><span class="num" id="qStatCss">0</span><span class="label">CSS</span></div>
+                <div class="stat"><span class="num" id="qStatJs">0</span><span class="label">JS</span></div>
+                <div class="stat"><span class="num" id="qStatPy">0</span><span class="label">Python</span></div>
+            </div>
+
+            <div class="toolbar">
+                <input type="text" id="qSearch" placeholder="🔍 Search question text…">
+                <select id="qFilterTopic" style="padding:10px 12px;border:1px solid var(--border);border-radius:6px;">
+                    <option value="">All topics</option>
+                    <option value="HTML">HTML</option>
+                    <option value="CSS">CSS</option>
+                    <option value="JS">JavaScript</option>
+                    <option value="PY">Python</option>
+                </select>
+                <select id="qFilterLevel" style="padding:10px 12px;border:1px solid var(--border);border-radius:6px;">
+                    <option value="">All levels</option>
+                    <option value="easy">Easy</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard">Hard</option>
+                </select>
+            </div>
+
+            <div class="table-wrap">
+                <table class="results" id="qTable">
+                    <thead>
+                        <tr>
+                            <th style="width:50px;">#</th>
+                            <th style="width:80px;">Topic</th>
+                            <th style="width:80px;">Level</th>
+                            <th>Question</th>
+                            <th style="width:90px;">Correct</th>
+                            <th style="width:80px;">Active</th>
+                            <th style="width:140px;text-align:right;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="qTbody">
+                        <tr><td colspan="7" class="empty">Loading…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div><!-- /questionsPanel -->
+
+        <!-- ============== QUESTION FORM MODAL ============== -->
+        <div id="qFormModal" class="code-modal">
+            <div class="code-modal-inner" style="max-width:680px;">
+                <div class="code-modal-head">
+                    <div>
+                        <h3 id="qFormTitle">New Question</h3>
+                        <p style="color:var(--muted);font-size:13px;">Fill all fields. Correct answer is the option you pick the radio next to.</p>
+                    </div>
+                    <button id="qFormClose" type="button" class="btn btn-light">Close ✕</button>
+                </div>
+
+                <div id="qFormStatus" class="alert" style="display:none;"></div>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                    <div class="form-group">
+                        <label>Topic *</label>
+                        <select id="qfTopic" required>
+                            <option value="HTML">HTML</option>
+                            <option value="CSS">CSS</option>
+                            <option value="JS">JavaScript</option>
+                            <option value="PY">Python</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Difficulty *</label>
+                        <select id="qfLevel" required>
+                            <option value="easy">Easy</option>
+                            <option value="medium" selected>Medium</option>
+                            <option value="hard">Hard</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Question text *</label>
+                    <textarea id="qfText" rows="3" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:14px;font-family:inherit;resize:vertical;" required></textarea>
+                </div>
+
+                <p style="font-size:13px;color:var(--secondary);font-weight:600;margin:6px 0;">Options (click the radio next to the CORRECT one):</p>
+                <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+                    <input type="radio" name="qfAns" value="0" id="qfA0">
+                    <label for="qfA0" style="font-weight:600;width:18px;text-align:center;">A</label>
+                    <input type="text" id="qfOptA" placeholder="Option A" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:14px;">
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+                    <input type="radio" name="qfAns" value="1" id="qfA1">
+                    <label for="qfA1" style="font-weight:600;width:18px;text-align:center;">B</label>
+                    <input type="text" id="qfOptB" placeholder="Option B" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:14px;">
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+                    <input type="radio" name="qfAns" value="2" id="qfA2">
+                    <label for="qfA2" style="font-weight:600;width:18px;text-align:center;">C</label>
+                    <input type="text" id="qfOptC" placeholder="Option C" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:14px;">
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;">
+                    <input type="radio" name="qfAns" value="3" id="qfA3">
+                    <label for="qfA3" style="font-weight:600;width:18px;text-align:center;">D</label>
+                    <input type="text" id="qfOptD" placeholder="Option D" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:14px;">
+                </div>
+
+                <label style="display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:14px;">
+                    <input type="checkbox" id="qfActive" checked>
+                    Active (available for tests)
+                </label>
+
+                <div style="display:flex;gap:10px;">
+                    <button id="qfCancel" type="button" class="btn btn-light"  style="flex:1;">Cancel</button>
+                    <button id="qfSave"   type="button" class="btn btn-primary" style="flex:2;">Save Question</button>
+                </div>
+            </div>
+        </div>
 
     </div>
 </section>
