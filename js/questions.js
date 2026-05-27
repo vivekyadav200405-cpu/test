@@ -9,10 +9,59 @@
    QUESTIONS source = window.POOL (loaded from question_pool.js)
    ============================================================ */
 
-const TEST_SPEC = {
+// Default test spec — overridden by DB config if available
+let TEST_SPEC = {
     counts:        { HTML: 5,    CSS: 5,    JS: 15,   PY: 25 },   // = 50
     difficultyMix: { easy: 0.40, medium: 0.35, hard: 0.25 }
 };
+
+/**
+ * Load test plan from Supabase (called once before showing welcome).
+ * Falls back to TEST_SPEC defaults if anything fails.
+ * Also sets duration / pass / etc. on SUPABASE_CONFIG.
+ */
+async function loadTestConfig() {
+    try {
+        if (typeof SUPABASE_CONFIG === "undefined"
+            || !SUPABASE_CONFIG.url
+            || !SUPABASE_CONFIG.anonKey
+            || SUPABASE_CONFIG.anonKey.indexOf("REPLACE_WITH") === 0) return null;
+        if (!window.supabase) return null;
+
+        const sb = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
+        const { data, error } = await sb
+            .from("test_config")
+            .select("*")
+            .eq("id", 1)
+            .maybeSingle();
+        if (error || !data) return null;
+
+        if (data.counts)         TEST_SPEC.counts        = data.counts;
+        if (data.difficulty_mix) TEST_SPEC.difficultyMix = data.difficulty_mix;
+        if (data.duration_min)   SUPABASE_CONFIG.durationMinutes = data.duration_min;
+        if (data.pass_percent)   SUPABASE_CONFIG.passPercentage  = data.pass_percent;
+        if (data.max_violations !== undefined) SUPABASE_CONFIG.maxViolations = data.max_violations;
+        if (data.allow_coding !== undefined)   SUPABASE_CONFIG.allowCoding   = data.allow_coding;
+        if (data.answers_unlock) SUPABASE_CONFIG.answersUnlockAt = data.answers_unlock;
+        if (data.review_unlock)  SUPABASE_CONFIG.reviewUnlockAt  = data.review_unlock;
+
+        // Cache locally so even offline we use last known
+        try { localStorage.setItem("tb_test_config", JSON.stringify(data)); } catch (_) {}
+        return data;
+    } catch (e) {
+        console.warn("loadTestConfig failed:", e);
+        // Try cache
+        try {
+            const cached = localStorage.getItem("tb_test_config");
+            if (cached) {
+                const data = JSON.parse(cached);
+                if (data.counts)         TEST_SPEC.counts        = data.counts;
+                if (data.difficulty_mix) TEST_SPEC.difficultyMix = data.difficulty_mix;
+            }
+        } catch (_) {}
+        return null;
+    }
+}
 
 /**
  * Pick `n` random unique items from `arr`.

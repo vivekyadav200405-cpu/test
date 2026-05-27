@@ -137,6 +137,48 @@ grant execute on function public.get_my_submission(text) to anon, authenticated;
 
 
 -- ================================================================
+-- 4d. TEST CONFIG TABLE  (admin's test plan — single active row)
+-- ================================================================
+create table if not exists public.test_config (
+    id              int          primary key default 1 check (id = 1),
+    duration_min    int          not null default 30,
+    pass_percent    int          not null default 50,
+    max_violations  int          not null default 3,
+    counts          jsonb        not null default '{"HTML":5,"CSS":5,"JS":15,"PY":25}'::jsonb,
+    difficulty_mix  jsonb        not null default '{"easy":0.40,"medium":0.35,"hard":0.25}'::jsonb,
+    allow_coding    boolean      not null default true,
+    answers_unlock  timestamptz,
+    review_unlock   timestamptz,
+    updated_at      timestamptz  not null default now()
+);
+
+-- Seed one config row (id=1) if not exists
+insert into public.test_config (id) values (1)
+on conflict (id) do nothing;
+
+alter table public.test_config enable row level security;
+
+drop policy if exists "Anyone can read test_config"  on public.test_config;
+drop policy if exists "Anyone can write test_config" on public.test_config;
+
+-- Anyone can READ (frontends need this to know test config)
+create policy "Anyone can read test_config"
+    on public.test_config
+    for select
+    to anon, authenticated
+    using (true);
+
+-- Anyone can WRITE (admin UI uses anon key; protected by password gate in UI)
+-- For higher security, use Supabase Auth and gate by role.
+create policy "Anyone can write test_config"
+    on public.test_config
+    for update
+    to anon, authenticated
+    using (true)
+    with check (true);
+
+
+-- ================================================================
 -- 5. CODING SUBMISSIONS  (optional practical test — 15 questions)
 -- ================================================================
 

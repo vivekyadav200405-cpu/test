@@ -63,6 +63,134 @@
     // ------------------------------------------------------------
     // Supabase fetch
     // ------------------------------------------------------------
+    // ============================================================
+    // TEST PLANNER
+    // ============================================================
+    function updatePlannerTotals() {
+        const cnt =
+            (parseInt($("#cfgCntHTML").value) || 0) +
+            (parseInt($("#cfgCntCSS").value)  || 0) +
+            (parseInt($("#cfgCntJS").value)   || 0) +
+            (parseInt($("#cfgCntPY").value)   || 0);
+        $("#cfgTotal").textContent = cnt;
+
+        const mix =
+            (parseInt($("#cfgEasy").value)   || 0) +
+            (parseInt($("#cfgMedium").value) || 0) +
+            (parseInt($("#cfgHard").value)   || 0);
+        $("#cfgMixTotal").textContent = mix;
+        $("#cfgMixTotal").style.color = (mix === 100) ? "var(--success)" : "var(--danger)";
+    }
+
+    async function loadPlannerConfig() {
+        // Show pool stats if POOL loaded
+        if (typeof POOL !== "undefined") {
+            const t = POOL.HTML.length + POOL.CSS.length + POOL.JS.length + POOL.PY.length;
+            $("#poolCount").textContent =
+                "HTML " + POOL.HTML.length + " + CSS " + POOL.CSS.length +
+                " + JS " + POOL.JS.length + " + Python " + POOL.PY.length +
+                " = " + t + " total";
+        }
+
+        try {
+            const sb = getSupabaseClient();
+            const { data, error } = await sb
+                .from("test_config")
+                .select("*")
+                .eq("id", 1)
+                .maybeSingle();
+            if (error) throw error;
+            if (!data) {
+                showPlannerStatus("No config row found — saving will create one.", "warn");
+                return;
+            }
+            $("#cfgDuration").value = data.duration_min ?? 30;
+            $("#cfgPass").value     = data.pass_percent ?? 50;
+            $("#cfgViol").value     = data.max_violations ?? 3;
+            const c = data.counts || {};
+            $("#cfgCntHTML").value = c.HTML ?? 5;
+            $("#cfgCntCSS").value  = c.CSS  ?? 5;
+            $("#cfgCntJS").value   = c.JS   ?? 15;
+            $("#cfgCntPY").value   = c.PY   ?? 25;
+            const m = data.difficulty_mix || {};
+            $("#cfgEasy").value   = Math.round((m.easy   ?? 0.40) * 100);
+            $("#cfgMedium").value = Math.round((m.medium ?? 0.35) * 100);
+            $("#cfgHard").value   = Math.round((m.hard   ?? 0.25) * 100);
+            $("#cfgAllowCoding").checked = data.allow_coding !== false;
+            $("#cfgAnsUnlock").value = data.answers_unlock || "";
+            $("#cfgRevUnlock").value = data.review_unlock  || "";
+            updatePlannerTotals();
+            showPlannerStatus("Loaded from DB.", "ok");
+        } catch (e) {
+            showPlannerStatus("Load failed: " + (e.message || e), "err");
+        }
+    }
+
+    async function savePlannerConfig() {
+        const mixSum =
+            (parseInt($("#cfgEasy").value)   || 0) +
+            (parseInt($("#cfgMedium").value) || 0) +
+            (parseInt($("#cfgHard").value)   || 0);
+        if (mixSum !== 100) {
+            showPlannerStatus("Difficulty mix must total 100%. Currently " + mixSum + "%.", "err");
+            return;
+        }
+        const payload = {
+            id: 1,
+            duration_min:   parseInt($("#cfgDuration").value) || 30,
+            pass_percent:   parseInt($("#cfgPass").value) || 50,
+            max_violations: parseInt($("#cfgViol").value) || 3,
+            counts: {
+                HTML: parseInt($("#cfgCntHTML").value) || 0,
+                CSS:  parseInt($("#cfgCntCSS").value)  || 0,
+                JS:   parseInt($("#cfgCntJS").value)   || 0,
+                PY:   parseInt($("#cfgCntPY").value)   || 0
+            },
+            difficulty_mix: {
+                easy:   (parseInt($("#cfgEasy").value)   || 0) / 100,
+                medium: (parseInt($("#cfgMedium").value) || 0) / 100,
+                hard:   (parseInt($("#cfgHard").value)   || 0) / 100
+            },
+            allow_coding: $("#cfgAllowCoding").checked,
+            answers_unlock: $("#cfgAnsUnlock").value.trim() || null,
+            review_unlock:  $("#cfgRevUnlock").value.trim() || null,
+            updated_at:     new Date().toISOString()
+        };
+        try {
+            const sb = getSupabaseClient();
+            // Upsert (insert or update single row with id=1)
+            const { error } = await sb
+                .from("test_config")
+                .upsert(payload, { onConflict: "id" });
+            if (error) throw error;
+            showPlannerStatus("✓ Saved — new test plan is now active for all candidates.", "ok");
+        } catch (e) {
+            showPlannerStatus("Save failed: " + (e.message || e), "err");
+        }
+    }
+
+    function showPlannerStatus(msg, type) {
+        const el = $("#plannerStatus");
+        if (!el) return;
+        el.textContent = msg;
+        el.style.display = "block";
+        el.style.padding = "10px 14px";
+        el.style.borderRadius = "6px";
+        el.style.marginBottom = "14px";
+        el.style.fontSize = "14px";
+        if (type === "ok") {
+            el.style.background = "rgba(40,167,69,0.12)";
+            el.style.color = "var(--success)";
+        } else if (type === "warn") {
+            el.style.background = "#fff8e1";
+            el.style.color = "#8a6d00";
+        } else {
+            el.style.background = "rgba(220,53,69,0.12)";
+            el.style.color = "var(--danger)";
+        }
+        setTimeout(() => { el.style.display = "none"; }, 6000);
+    }
+
     function getSupabaseClient() {
         if (typeof SUPABASE_CONFIG === "undefined"
             || !SUPABASE_CONFIG.url
@@ -480,8 +608,28 @@
                 $$(".tab-btn").forEach(b => b.classList.remove("active"));
                 btn.classList.add("active");
                 $$(".coding-panel").forEach(p => p.classList.remove("active"));
-                $("#" + (tab === "mcq" ? "mcqPanel" : "codingPanel")).classList.add("active");
+                const panelId = tab === "mcq"     ? "mcqPanel"
+                              : tab === "coding"  ? "codingPanel"
+                              : "plannerPanel";
+                $("#" + panelId).classList.add("active");
+                if (tab === "planner") loadPlannerConfig();
             });
+        });
+
+        // ----- Planner buttons -----
+        const cfgSave = $("#cfgSave");
+        if (cfgSave) cfgSave.addEventListener("click", savePlannerConfig);
+        const cfgReload = $("#cfgReload");
+        if (cfgReload) cfgReload.addEventListener("click", loadPlannerConfig);
+
+        // Live-sum counters
+        ["cfgCntHTML","cfgCntCSS","cfgCntJS","cfgCntPY"].forEach(id => {
+            const el = $("#"+id);
+            if (el) el.addEventListener("input", updatePlannerTotals);
+        });
+        ["cfgEasy","cfgMedium","cfgHard"].forEach(id => {
+            const el = $("#"+id);
+            if (el) el.addEventListener("input", updatePlannerTotals);
         });
 
         // ----- Coding search -----

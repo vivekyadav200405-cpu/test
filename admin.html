@@ -337,6 +337,7 @@
         <div class="tabs">
             <button class="tab-btn active" data-tab="mcq">MCQ Results</button>
             <button class="tab-btn"        data-tab="coding">Coding Submissions</button>
+            <button class="tab-btn"        data-tab="planner">⚙ Test Planner</button>
         </div>
 
         <!-- ============== MCQ PANEL ============== -->
@@ -401,6 +402,78 @@
             </div>
         </div><!-- /codingPanel -->
 
+        <!-- ============== TEST PLANNER PANEL ============== -->
+        <div id="plannerPanel" class="coding-panel">
+            <div class="card" style="max-width:780px;margin:0 auto;">
+                <h2 style="color:var(--primary);margin-bottom:6px;">Test Planner</h2>
+                <p style="color:var(--muted);font-size:13px;margin-bottom:18px;">
+                    Set the active test plan. All candidates will get tests built from this config.
+                </p>
+
+                <div id="plannerStatus" class="alert" style="display:none;"></div>
+
+                <div class="form-group">
+                    <label>Test duration (minutes)</label>
+                    <input type="number" id="cfgDuration" min="1" max="240" value="30">
+                </div>
+
+                <div class="form-group">
+                    <label>Pass percentage</label>
+                    <input type="number" id="cfgPass" min="0" max="100" value="50">
+                </div>
+
+                <div class="form-group">
+                    <label>Max anti-cheat violations (auto-submit after)</label>
+                    <input type="number" id="cfgViol" min="1" max="20" value="3">
+                </div>
+
+                <h4 style="margin:18px 0 8px;color:var(--secondary);">Questions per topic</h4>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                    <div class="form-group"><label>HTML</label><input type="number" id="cfgCntHTML" min="0" max="50" value="5"></div>
+                    <div class="form-group"><label>CSS</label> <input type="number" id="cfgCntCSS"  min="0" max="50" value="5"></div>
+                    <div class="form-group"><label>JS</label>  <input type="number" id="cfgCntJS"   min="0" max="50" value="15"></div>
+                    <div class="form-group"><label>Python</label><input type="number" id="cfgCntPY" min="0" max="50" value="25"></div>
+                </div>
+                <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">
+                    Total: <strong id="cfgTotal">50</strong> questions per test.
+                </p>
+
+                <h4 style="margin:18px 0 8px;color:var(--secondary);">Difficulty mix (percentages — must sum 100%)</h4>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+                    <div class="form-group"><label>Easy %</label>  <input type="number" id="cfgEasy"   min="0" max="100" value="40"></div>
+                    <div class="form-group"><label>Medium %</label><input type="number" id="cfgMedium" min="0" max="100" value="35"></div>
+                    <div class="form-group"><label>Hard %</label>  <input type="number" id="cfgHard"   min="0" max="100" value="25"></div>
+                </div>
+                <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">
+                    Sum: <strong id="cfgMixTotal">100</strong>%.
+                </p>
+
+                <h4 style="margin:18px 0 8px;color:var(--secondary);">Options</h4>
+                <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:14px;">
+                    <input type="checkbox" id="cfgAllowCoding" checked>
+                    Show optional Coding Test after MCQ
+                </label>
+
+                <div class="form-group">
+                    <label>Answer key unlocks at (optional ISO datetime)</label>
+                    <input type="text" id="cfgAnsUnlock" placeholder="2026-05-30T18:00:00+05:30">
+                </div>
+                <div class="form-group">
+                    <label>Candidate review (review.html) unlocks at (optional)</label>
+                    <input type="text" id="cfgRevUnlock" placeholder="2026-05-30T18:00:00+05:30">
+                </div>
+
+                <div style="display:flex;gap:10px;margin-top:18px;">
+                    <button id="cfgReload" type="button" class="btn btn-light">Reload from DB</button>
+                    <button id="cfgSave"   type="button" class="btn btn-primary" style="flex:1;">Save &amp; activate plan</button>
+                </div>
+
+                <p style="font-size:11px;color:var(--muted);margin-top:14px;text-align:center;">
+                    Pool available: <span id="poolCount">—</span> questions
+                </p>
+            </div>
+        </div><!-- /plannerPanel -->
+
     </div>
 </section>
 
@@ -430,6 +503,8 @@
 <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/python/python.min.js"></script>
 
 <script src="js/config.js"></script>
+<script src="js/question_pool.js"></script>
+<script src="js/question_pool_extra.js"></script>
 <script src="js/questions.js"></script>
 <script src="js/admin.js"></script>
 

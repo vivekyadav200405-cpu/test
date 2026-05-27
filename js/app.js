@@ -53,6 +53,22 @@
     // VIEW 1 — WELCOME
     // ============================================================
     function initWelcome() {
+        // Load admin's test plan from DB (best-effort; falls back to defaults)
+        if (typeof loadTestConfig === "function") {
+            loadTestConfig().then(cfg => {
+                if (cfg) {
+                    // Reflect duration in the visible timer label if needed
+                    const t = $("#timer");
+                    if (t && SUPABASE_CONFIG.durationMinutes) {
+                        const m = Number(SUPABASE_CONFIG.durationMinutes) || 30;
+                        t.textContent = String(m).padStart(2, "0") + ":00";
+                    }
+                    // Reflect max violations
+                    if (SUPABASE_CONFIG.maxViolations) state.maxViolations = SUPABASE_CONFIG.maxViolations;
+                }
+            });
+        }
+
         const form     = $("#loginForm");
         const errBox   = $("#loginError");
         const startBtn = $("#startBtn");
