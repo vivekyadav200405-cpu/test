@@ -45,6 +45,61 @@
         }
         .meta-bar strong { color: var(--secondary); }
 
+        .attempt-bar {
+            background: white;
+            padding: 14px;
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            margin-bottom: 14px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .attempt-bar label {
+            font-weight: 600;
+            color: var(--secondary);
+            font-size: 13px;
+        }
+        .attempt-bar select {
+            flex: 1;
+            min-width: 220px;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+        }
+        .attempt-bar .attempt-count {
+            background: var(--primary);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .plan-banner {
+            background: linear-gradient(90deg, var(--primary), #9a0d24);
+            color: white;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 14px;
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .plan-banner .pname {
+            font-size: 16px;
+            font-weight: 700;
+        }
+        .plan-banner .pdate {
+            font-size: 13px;
+            opacity: 0.9;
+        }
+
         .review-q {
             background: white;
             border-radius: 8px;
@@ -189,9 +244,24 @@
                 <span id="rDept">—</span>
             </div>
             <div>
-                Submitted: <strong id="rDate">—</strong>
-                &nbsp;<button id="logoutBtn" class="btn btn-light" style="padding:4px 10px;min-height:30px;font-size:12px;">Logout</button>
+                <button id="logoutBtn" class="btn btn-light" style="padding:4px 10px;min-height:30px;font-size:12px;">Logout</button>
             </div>
+        </div>
+
+        <!-- Attempt selector (shown only if multiple submissions) -->
+        <div class="attempt-bar" id="attemptBar" style="display:none;">
+            <label for="attemptSelect">Viewing test:</label>
+            <select id="attemptSelect"></select>
+            <span class="attempt-count" id="attemptCount">0 attempts</span>
+        </div>
+
+        <!-- Plan banner — always shows current test name + date -->
+        <div class="plan-banner">
+            <div>
+                <div class="pname" id="bPlanName">—</div>
+                <div class="pdate" id="bPlanDate">—</div>
+            </div>
+            <div class="pdate" id="bDuration">—</div>
         </div>
 
         <div class="score-banner">

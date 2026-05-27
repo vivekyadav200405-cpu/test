@@ -78,25 +78,43 @@
         return window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
     }
 
-    async function fetchSubmission(empCode) {
+    // Fetch ALL submissions for emp_code across all plans
+    async function fetchAllSubmissions(empCode) {
         const sb = sbClient();
-        // Try RPC first
-        try {
-            const { data, error } = await sb.rpc("get_my_submission", { emp: empCode });
-            if (!error && data) return data;
-        } catch (e) { /* fall through to direct select */ }
-
-        // Fallback: direct select (works because anon SELECT policy exists)
         const { data, error } = await sb
             .from(SUPABASE_CONFIG.tableName || "test_submissions")
             .select("*")
             .ilike("emp_code", empCode)
-            .order("submitted_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
+            .order("submitted_at", { ascending: false });
         if (error) throw error;
-        return data;
+        return data || [];
     }
+
+    // Fetch plan names for the given plan ids
+    async function fetchPlansMap(planIds) {
+        const map = {};
+        if (!planIds || !planIds.length) return map;
+        try {
+            const sb = sbClient();
+            const { data, error } = await sb
+                .from("test_plans")
+                .select("id, name")
+                .in("id", planIds);
+            if (!error && data) data.forEach(p => { map[p.id] = p.name; });
+        } catch (e) { /* ignore */ }
+        return map;
+    }
+
+    // Backward-compat shim
+    async function fetchSubmission(empCode) {
+        const list = await fetchAllSubmissions(empCode);
+        return list[0] || null;
+    }
+
+    // Cache for this session
+    let allSubs = [];
+    let planMap = {};
+    let currentSub = null;
 
     // ---------- Login ----------
     async function attemptLogin(e) {
@@ -116,40 +134,87 @@
             err.classList.remove("hidden"); return;
         }
 
-        // Lookup submission
-        let sub;
+        // Fetch all submissions
         try {
-            sub = await fetchSubmission(emp);
+            allSubs = await fetchAllSubmissions(emp);
         } catch (ex) {
             err.textContent = "Error: " + (ex.message || ex);
             err.classList.remove("hidden"); return;
         }
-        if (!sub) {
+        if (!allSubs.length) {
             err.textContent = "No submission found for Employee Code: " + emp;
             err.classList.remove("hidden"); return;
         }
 
+        // Lookup plan names
+        const planIds = [...new Set(allSubs.map(s => s.test_plan_id).filter(Boolean))];
+        planMap = await fetchPlansMap(planIds);
+
         sessionStorage.setItem(SESSION_KEY, emp);
-        proceed(sub);
+        proceed();
     }
 
-    function proceed(submission) {
+    function proceed() {
         if (!isUnlocked()) {
             show("lockedView");
             startCountdown();
             return;
         }
-        render(submission);
+        // Default to latest submission
+        currentSub = allSubs[0];
+        renderAttemptSelector();
+        renderSubmission(currentSub);
         show("reviewView");
     }
 
-    // ---------- Render ----------
-    function render(r) {
+    function renderAttemptSelector() {
+        const bar = $("#attemptBar");
+        const sel = $("#attemptSelect");
+        const cnt = $("#attemptCount");
+        sel.innerHTML = "";
+
+        allSubs.forEach((s, i) => {
+            const planName = (s.test_plan_id && planMap[s.test_plan_id])
+                ? planMap[s.test_plan_id]
+                : (s.test_plan_id ? "Plan #" + s.test_plan_id : "Legacy test");
+            const date = new Date(s.submitted_at).toLocaleString();
+            const opt = document.createElement("option");
+            opt.value = i;
+            opt.textContent = planName + "  •  " + date + "  •  " + s.score + "/" + s.total_questions + " (" + s.status + ")";
+            sel.appendChild(opt);
+        });
+
+        cnt.textContent = allSubs.length + (allSubs.length === 1 ? " attempt" : " attempts");
+        bar.style.display = "flex";   // always show even for 1 — gives clarity
+
+        sel.onchange = () => {
+            const idx = Number(sel.value);
+            currentSub = allSubs[idx];
+            renderSubmission(currentSub);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        };
+        sel.value = "0";
+    }
+
+    // ---------- Render selected submission ----------
+    function renderSubmission(r) {
+        // Top meta bar
         $("#rName").textContent  = r.full_name;
         $("#rEmp").textContent   = r.emp_code;
         $("#rDept").textContent  = r.department || "—";
-        $("#rDate").textContent  = new Date(r.submitted_at).toLocaleString();
 
+        // Plan banner
+        const planName = (r.test_plan_id && planMap[r.test_plan_id])
+            ? planMap[r.test_plan_id]
+            : (r.test_plan_id ? "Plan #" + r.test_plan_id : "Legacy test");
+        $("#bPlanName").textContent = planName;
+        $("#bPlanDate").textContent = "Submitted on " + new Date(r.submitted_at).toLocaleString();
+        const tt = r.time_taken_s || 0;
+        const mins = Math.floor(tt / 60);
+        const secs = tt % 60;
+        $("#bDuration").textContent = "Time taken: " + mins + "m " + secs + "s  •  " + r.status;
+
+        // Score breakdown
         $("#rScore").textContent   = r.score + " / " + r.total_questions;
         $("#rCorrect").textContent = r.correct;
         $("#rWrong").textContent   = r.wrong;
@@ -237,7 +302,15 @@
         if (savedEmp) {
             $("#empInput").value = savedEmp;
             $("#pwInput").value  = savedEmp;
-            fetchSubmission(savedEmp).then(sub => { if (sub) proceed(sub); }).catch(()=>{});
+            fetchAllSubmissions(savedEmp)
+                .then(async list => {
+                    if (!list.length) return;
+                    allSubs = list;
+                    const planIds = [...new Set(list.map(s => s.test_plan_id).filter(Boolean))];
+                    planMap = await fetchPlansMap(planIds);
+                    proceed();
+                })
+                .catch(()=>{});
         }
     });
 })();
