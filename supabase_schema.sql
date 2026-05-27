@@ -30,7 +30,11 @@ alter table public.test_submissions
     add column if not exists ip_address   text,
     add column if not exists time_taken_s int,
     add column if not exists violations   int default 0,
-    add column if not exists questions    jsonb;
+    add column if not exists questions    jsonb,
+    add column if not exists test_plan_id bigint;
+
+create index if not exists idx_test_subs_plan
+    on public.test_submissions (test_plan_id);
 
 -- ------------ 2. INDEXES ---------------------------------------
 create index if not exists idx_test_subs_emp_code
@@ -74,6 +78,72 @@ create policy "Anyone can read submissions"
 
 
 -- ================================================================
+-- 3b. TEST PLANS TABLE  (multiple plans; one is active at a time)
+-- ----------------------------------------------------------------
+-- Created BEFORE RPCs because RPCs reference test_plans.
+-- ================================================================
+create table if not exists public.test_plans (
+    id              bigserial    primary key,
+    name            text         not null,
+    is_active       boolean      not null default false,
+    duration_min    int          not null default 30,
+    pass_percent    int          not null default 50,
+    max_violations  int          not null default 3,
+    counts          jsonb        not null default '{"HTML":5,"CSS":5,"JS":15,"PY":25}'::jsonb,
+    difficulty_mix  jsonb        not null default '{"easy":0.40,"medium":0.35,"hard":0.25}'::jsonb,
+    allow_coding    boolean      not null default true,
+    answers_unlock  timestamptz,
+    review_unlock   timestamptz,
+    created_at      timestamptz  not null default now(),
+    updated_at      timestamptz  not null default now()
+);
+
+create unique index if not exists idx_test_plans_one_active
+    on public.test_plans (is_active) where is_active = true;
+
+-- Migrate from old test_config table if it exists
+do $$
+begin
+    if exists (select 1 from information_schema.tables
+               where table_schema='public' and table_name='test_config') then
+        if not exists (select 1 from public.test_plans) then
+            insert into public.test_plans
+                (name, is_active, duration_min, pass_percent, max_violations,
+                 counts, difficulty_mix, allow_coding, answers_unlock, review_unlock)
+            select 'Default plan', true, duration_min, pass_percent, coalesce(max_violations,3),
+                   counts, difficulty_mix, coalesce(allow_coding,true), answers_unlock, review_unlock
+              from public.test_config
+             where id = 1;
+        end if;
+    end if;
+end$$;
+
+-- Seed default plan if no plans yet
+insert into public.test_plans (name, is_active)
+select 'Default plan', true
+where not exists (select 1 from public.test_plans);
+
+alter table public.test_plans enable row level security;
+
+drop policy if exists "Anyone can read test_plans"   on public.test_plans;
+drop policy if exists "Anyone can write test_plans"  on public.test_plans;
+drop policy if exists "Anyone can insert test_plans" on public.test_plans;
+drop policy if exists "Anyone can delete test_plans" on public.test_plans;
+
+create policy "Anyone can read test_plans"
+    on public.test_plans for select to anon, authenticated using (true);
+
+create policy "Anyone can insert test_plans"
+    on public.test_plans for insert to anon, authenticated with check (true);
+
+create policy "Anyone can write test_plans"
+    on public.test_plans for update to anon, authenticated using (true) with check (true);
+
+create policy "Anyone can delete test_plans"
+    on public.test_plans for delete to anon, authenticated using (true);
+
+
+-- ================================================================
 -- 4. DUPLICATE-CHECK HELPER  (used by frontend before test starts)
 -- ----------------------------------------------------------------
 -- Frontend calls:  rpc('has_taken_test', { emp: 'TBDI001' })
@@ -87,8 +157,11 @@ stable
 security definer
 set search_path = public
 as $$
+    -- Check duplicate WITHIN current active plan only
     select exists(
-        select 1 from public.test_submissions where emp_code = emp
+        select 1 from public.test_submissions s
+         where s.emp_code = emp
+           and s.test_plan_id = (select id from public.test_plans where is_active = true limit 1)
     );
 $$;
 
@@ -106,7 +179,9 @@ security definer
 set search_path = public
 as $$
     select exists(
-        select 1 from public.test_submissions where ip_address = client_ip
+        select 1 from public.test_submissions s
+         where s.ip_address = client_ip
+           and s.test_plan_id = (select id from public.test_plans where is_active = true limit 1)
     );
 $$;
 
@@ -136,46 +211,38 @@ $$;
 grant execute on function public.get_my_submission(text) to anon, authenticated;
 
 
--- ================================================================
--- 4d. TEST CONFIG TABLE  (admin's test plan — single active row)
--- ================================================================
-create table if not exists public.test_config (
-    id              int          primary key default 1 check (id = 1),
-    duration_min    int          not null default 30,
-    pass_percent    int          not null default 50,
-    max_violations  int          not null default 3,
-    counts          jsonb        not null default '{"HTML":5,"CSS":5,"JS":15,"PY":25}'::jsonb,
-    difficulty_mix  jsonb        not null default '{"easy":0.40,"medium":0.35,"hard":0.25}'::jsonb,
-    allow_coding    boolean      not null default true,
-    answers_unlock  timestamptz,
-    review_unlock   timestamptz,
-    updated_at      timestamptz  not null default now()
-);
+-- ----------------------------------------------------------------
+-- RPC: activate a plan (deactivates all others atomically)
+-- ----------------------------------------------------------------
+create or replace function public.activate_plan(plan_id bigint)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+    update public.test_plans set is_active = false where is_active = true;
+    update public.test_plans set is_active = true, updated_at = now() where id = plan_id;
+end;
+$$;
 
--- Seed one config row (id=1) if not exists
-insert into public.test_config (id) values (1)
-on conflict (id) do nothing;
+grant execute on function public.activate_plan(bigint) to anon, authenticated;
 
-alter table public.test_config enable row level security;
 
-drop policy if exists "Anyone can read test_config"  on public.test_config;
-drop policy if exists "Anyone can write test_config" on public.test_config;
+-- ----------------------------------------------------------------
+-- RPC: get the active plan
+-- ----------------------------------------------------------------
+create or replace function public.get_active_plan()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+    select to_jsonb(t) from public.test_plans t where t.is_active = true limit 1;
+$$;
 
--- Anyone can READ (frontends need this to know test config)
-create policy "Anyone can read test_config"
-    on public.test_config
-    for select
-    to anon, authenticated
-    using (true);
-
--- Anyone can WRITE (admin UI uses anon key; protected by password gate in UI)
--- For higher security, use Supabase Auth and gate by role.
-create policy "Anyone can write test_config"
-    on public.test_config
-    for update
-    to anon, authenticated
-    using (true)
-    with check (true);
+grant execute on function public.get_active_plan() to anon, authenticated;
 
 
 -- ================================================================
@@ -193,6 +260,9 @@ create table if not exists public.coding_submissions (
     answers         jsonb,                     -- [{q_id, title, section, language, code, attempted}]
     created_at      timestamptz  not null default now()
 );
+
+alter table public.coding_submissions
+    add column if not exists test_plan_id bigint;
 
 create index if not exists idx_coding_subs_emp_code
     on public.coding_submissions (emp_code);

@@ -65,6 +65,18 @@
                     }
                     // Reflect max violations
                     if (SUPABASE_CONFIG.maxViolations) state.maxViolations = SUPABASE_CONFIG.maxViolations;
+
+                    // Show active plan name on welcome page
+                    if (window.ACTIVE_PLAN_NAME) {
+                        const brand = document.querySelector(".brand");
+                        if (brand && !document.getElementById("planBadge")) {
+                            const badge = document.createElement("p");
+                            badge.id = "planBadge";
+                            badge.style.cssText = "margin-top:6px;font-size:11px;color:var(--muted);";
+                            badge.innerHTML = 'Active plan: <strong style="color:var(--primary)">' + window.ACTIVE_PLAN_NAME + '</strong>';
+                            brand.appendChild(badge);
+                        }
+                    }
                 }
             });
         }
@@ -493,7 +505,8 @@
             questions:       state.questions,       // for review
             ip_address:      state.clientIp,
             time_taken_s:    timeTakenS,
-            violations:      state.violations
+            violations:      state.violations,
+            test_plan_id:    window.ACTIVE_PLAN_ID || null
         };
 
         // Render result (before DB call) so user sees something fast
@@ -920,7 +933,8 @@
             submitted_at:    new Date().toISOString(),
             total_questions: state.codingAnswers.length,
             attempted:       attempted,
-            answers:         state.codingAnswers   // jsonb in DB
+            answers:         state.codingAnswers,  // jsonb in DB
+            test_plan_id:    window.ACTIVE_PLAN_ID || null
         };
 
         // Render review immediately

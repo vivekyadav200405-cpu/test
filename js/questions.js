@@ -29,12 +29,27 @@ async function loadTestConfig() {
         if (!window.supabase) return null;
 
         const sb = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
-        const { data, error } = await sb
-            .from("test_config")
-            .select("*")
-            .eq("id", 1)
-            .maybeSingle();
-        if (error || !data) return null;
+
+        // Prefer the active plan; fall back to legacy test_config
+        let data = null;
+        try {
+            const res = await sb.from("test_plans").select("*").eq("is_active", true).maybeSingle();
+            if (!res.error) data = res.data;
+        } catch (e) { /* table may not exist yet */ }
+
+        if (!data) {
+            try {
+                const res2 = await sb.from("test_config").select("*").eq("id", 1).maybeSingle();
+                if (!res2.error) data = res2.data;
+            } catch (e) { /* ignore */ }
+        }
+        if (!data) return null;
+
+        // Expose active plan id globally so submissions can include it
+        if (data.id) {
+            window.ACTIVE_PLAN_ID   = data.id;
+            window.ACTIVE_PLAN_NAME = data.name || "Default plan";
+        }
 
         if (data.counts)         TEST_SPEC.counts        = data.counts;
         if (data.difficulty_mix) TEST_SPEC.difficultyMix = data.difficulty_mix;

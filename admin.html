@@ -404,13 +404,47 @@
 
         <!-- ============== TEST PLANNER PANEL ============== -->
         <div id="plannerPanel" class="coding-panel">
-            <div class="card" style="max-width:780px;margin:0 auto;">
+            <div class="card" style="max-width:880px;margin:0 auto;">
                 <h2 style="color:var(--primary);margin-bottom:6px;">Test Planner</h2>
                 <p style="color:var(--muted);font-size:13px;margin-bottom:18px;">
-                    Set the active test plan. All candidates will get tests built from this config.
+                    Create multiple test plans. The active plan is used for new candidates.
+                    Same employee may take different plans (one each), but not the same plan twice.
                 </p>
 
                 <div id="plannerStatus" class="alert" style="display:none;"></div>
+
+                <!-- ===== Plans list ===== -->
+                <div style="background:#f8f9fa;padding:14px;border-radius:8px;margin-bottom:18px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                        <h4 style="color:var(--secondary);font-size:15px;">Test Plans</h4>
+                        <button id="planNew" type="button" class="btn btn-primary" style="padding:6px 14px;min-height:34px;font-size:13px;">+ New Plan</button>
+                    </div>
+                    <table id="plansTable" style="width:100%;border-collapse:collapse;font-size:13px;background:white;">
+                        <thead>
+                            <tr style="background:#eef0f3;">
+                                <th style="text-align:left;padding:8px 10px;">#</th>
+                                <th style="text-align:left;padding:8px 10px;">Name</th>
+                                <th style="text-align:left;padding:8px 10px;">Submissions</th>
+                                <th style="text-align:left;padding:8px 10px;">Status</th>
+                                <th style="text-align:right;padding:8px 10px;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="plansTbody">
+                            <tr><td colspan="5" style="padding:12px;text-align:center;color:var(--muted);">Loading…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <hr style="border:none;border-top:1px solid var(--border);margin:18px 0;">
+
+                <h4 style="color:var(--secondary);font-size:15px;margin-bottom:10px;">
+                    Edit plan: <span id="editingPlanName" style="color:var(--primary);">—</span>
+                </h4>
+
+                <div class="form-group">
+                    <label>Plan name</label>
+                    <input type="text" id="cfgPlanName" placeholder="e.g. Frontend Sprint 1">
+                </div>
 
                 <div class="form-group">
                     <label>Test duration (minutes)</label>
@@ -463,9 +497,10 @@
                     <input type="text" id="cfgRevUnlock" placeholder="2026-05-30T18:00:00+05:30">
                 </div>
 
-                <div style="display:flex;gap:10px;margin-top:18px;">
-                    <button id="cfgReload" type="button" class="btn btn-light">Reload from DB</button>
-                    <button id="cfgSave"   type="button" class="btn btn-primary" style="flex:1;">Save &amp; activate plan</button>
+                <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;">
+                    <button id="cfgReload"   type="button" class="btn btn-light">Reload</button>
+                    <button id="cfgSave"     type="button" class="btn btn-primary" style="flex:1;">Save changes</button>
+                    <button id="cfgActivate" type="button" class="btn btn-success" style="flex:1;">Save &amp; Activate</button>
                 </div>
 
                 <p style="font-size:11px;color:var(--muted);margin-top:14px;text-align:center;">

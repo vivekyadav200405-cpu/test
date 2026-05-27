@@ -64,8 +64,11 @@
     // Supabase fetch
     // ------------------------------------------------------------
     // ============================================================
-    // TEST PLANNER
+    // TEST PLANNER  (multi-plan)
     // ============================================================
+    let editingPlanId = null;
+    let allPlans = [];
+
     function updatePlannerTotals() {
         const cnt =
             (parseInt($("#cfgCntHTML").value) || 0) +
@@ -94,49 +97,186 @@
 
         try {
             const sb = getSupabaseClient();
-            const { data, error } = await sb
-                .from("test_config")
+            // Load all plans
+            const { data: plans, error } = await sb
+                .from("test_plans")
                 .select("*")
-                .eq("id", 1)
-                .maybeSingle();
+                .order("id", { ascending: true });
             if (error) throw error;
-            if (!data) {
-                showPlannerStatus("No config row found — saving will create one.", "warn");
-                return;
+            allPlans = plans || [];
+
+            // Submission counts per plan
+            const counts = {};
+            for (const p of allPlans) {
+                const { count } = await sb
+                    .from("test_submissions")
+                    .select("id", { count: "exact", head: true })
+                    .eq("test_plan_id", p.id);
+                counts[p.id] = count || 0;
             }
-            $("#cfgDuration").value = data.duration_min ?? 30;
-            $("#cfgPass").value     = data.pass_percent ?? 50;
-            $("#cfgViol").value     = data.max_violations ?? 3;
-            const c = data.counts || {};
-            $("#cfgCntHTML").value = c.HTML ?? 5;
-            $("#cfgCntCSS").value  = c.CSS  ?? 5;
-            $("#cfgCntJS").value   = c.JS   ?? 15;
-            $("#cfgCntPY").value   = c.PY   ?? 25;
-            const m = data.difficulty_mix || {};
-            $("#cfgEasy").value   = Math.round((m.easy   ?? 0.40) * 100);
-            $("#cfgMedium").value = Math.round((m.medium ?? 0.35) * 100);
-            $("#cfgHard").value   = Math.round((m.hard   ?? 0.25) * 100);
-            $("#cfgAllowCoding").checked = data.allow_coding !== false;
-            $("#cfgAnsUnlock").value = data.answers_unlock || "";
-            $("#cfgRevUnlock").value = data.review_unlock  || "";
-            updatePlannerTotals();
-            showPlannerStatus("Loaded from DB.", "ok");
+
+            renderPlansTable(counts);
+
+            // Auto-load active (or first) plan into the form
+            const active = allPlans.find(p => p.is_active) || allPlans[0];
+            if (active) loadPlanIntoForm(active);
+            else showPlannerStatus("No plans yet — click '+ New Plan' to create one.", "warn");
         } catch (e) {
             showPlannerStatus("Load failed: " + (e.message || e), "err");
         }
     }
 
-    async function savePlannerConfig() {
+    function renderPlansTable(counts) {
+        const tbody = $("#plansTbody");
+        if (!allPlans.length) {
+            tbody.innerHTML = '<tr><td colspan="5" style="padding:12px;text-align:center;color:var(--muted);">No plans yet.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = allPlans.map(p => {
+            const c = counts[p.id] || 0;
+            const editing = (editingPlanId === p.id) ? " style=\"background:#fff8e1;\"" : "";
+            return (
+                '<tr' + editing + '>' +
+                    '<td style="padding:8px 10px;color:var(--muted);">' + p.id + '</td>' +
+                    '<td style="padding:8px 10px;"><strong>' + escapeHtml(p.name) + '</strong></td>' +
+                    '<td style="padding:8px 10px;">' + c + '</td>' +
+                    '<td style="padding:8px 10px;">' +
+                        (p.is_active
+                            ? '<span class="pill pass">ACTIVE</span>'
+                            : '<span style="color:var(--muted);">—</span>') +
+                    '</td>' +
+                    '<td style="padding:8px 10px;text-align:right;">' +
+                        '<button data-act="edit"     data-id="' + p.id + '" class="btn btn-light"     style="padding:4px 10px;min-height:28px;font-size:12px;">Edit</button> ' +
+                        (!p.is_active
+                            ? '<button data-act="activate" data-id="' + p.id + '" class="btn btn-success" style="padding:4px 10px;min-height:28px;font-size:12px;">Activate</button> '
+                            : '') +
+                        '<button data-act="delete"   data-id="' + p.id + '" class="btn btn-light"     style="padding:4px 10px;min-height:28px;font-size:12px;color:var(--danger);">Delete</button>' +
+                    '</td>' +
+                '</tr>'
+            );
+        }).join("");
+
+        tbody.querySelectorAll("button[data-act]").forEach(b => {
+            b.addEventListener("click", () => {
+                const id = Number(b.dataset.id);
+                const act = b.dataset.act;
+                if (act === "edit")     editPlan(id);
+                if (act === "activate") activatePlan(id);
+                if (act === "delete")   deletePlan(id);
+            });
+        });
+    }
+
+    function loadPlanIntoForm(p) {
+        editingPlanId = p.id;
+        $("#editingPlanName").textContent = "#" + p.id + " — " + p.name;
+        $("#cfgPlanName").value = p.name;
+        $("#cfgDuration").value = p.duration_min ?? 30;
+        $("#cfgPass").value     = p.pass_percent ?? 50;
+        $("#cfgViol").value     = p.max_violations ?? 3;
+        const c = p.counts || {};
+        $("#cfgCntHTML").value = c.HTML ?? 5;
+        $("#cfgCntCSS").value  = c.CSS  ?? 5;
+        $("#cfgCntJS").value   = c.JS   ?? 15;
+        $("#cfgCntPY").value   = c.PY   ?? 25;
+        const m = p.difficulty_mix || {};
+        $("#cfgEasy").value   = Math.round((m.easy   ?? 0.40) * 100);
+        $("#cfgMedium").value = Math.round((m.medium ?? 0.35) * 100);
+        $("#cfgHard").value   = Math.round((m.hard   ?? 0.25) * 100);
+        $("#cfgAllowCoding").checked = p.allow_coding !== false;
+        $("#cfgAnsUnlock").value = p.answers_unlock || "";
+        $("#cfgRevUnlock").value = p.review_unlock  || "";
+        updatePlannerTotals();
+    }
+
+    function editPlan(id) {
+        const p = allPlans.find(x => x.id === id);
+        if (p) {
+            loadPlanIntoForm(p);
+            // highlight in table
+            renderPlansTableWithoutCountsRefresh();
+            window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+        }
+    }
+
+    function renderPlansTableWithoutCountsRefresh() {
+        // Quick re-render highlighting current editingPlanId
+        const counts = {};
+        allPlans.forEach(p => counts[p.id] = 0);
+        renderPlansTable(counts);
+    }
+
+    async function newPlan() {
+        const name = (prompt("Name for the new plan:", "New plan") || "").trim();
+        if (!name) return;
+        try {
+            const sb = getSupabaseClient();
+            const { data, error } = await sb
+                .from("test_plans")
+                .insert({ name: name, is_active: false })
+                .select()
+                .single();
+            if (error) throw error;
+            showPlannerStatus("✓ Created plan '" + name + "'", "ok");
+            await loadPlannerConfig();
+            if (data) {
+                editingPlanId = data.id;
+                const fresh = allPlans.find(p => p.id === data.id);
+                if (fresh) loadPlanIntoForm(fresh);
+            }
+        } catch (e) {
+            showPlannerStatus("Create failed: " + (e.message || e), "err");
+        }
+    }
+
+    async function activatePlan(id) {
+        try {
+            const sb = getSupabaseClient();
+            const { error } = await sb.rpc("activate_plan", { plan_id: id });
+            if (error) throw error;
+            showPlannerStatus("✓ Activated plan #" + id + " — now live for all candidates.", "ok");
+            await loadPlannerConfig();
+        } catch (e) {
+            showPlannerStatus("Activate failed: " + (e.message || e), "err");
+        }
+    }
+
+    async function deletePlan(id) {
+        const p = allPlans.find(x => x.id === id);
+        if (!p) return;
+        if (p.is_active) {
+            showPlannerStatus("Cannot delete the active plan. Activate another plan first.", "err");
+            return;
+        }
+        if (!confirm("Delete plan '" + p.name + "'? Submissions remain but lose linkage.")) return;
+        try {
+            const sb = getSupabaseClient();
+            const { error } = await sb.from("test_plans").delete().eq("id", id);
+            if (error) throw error;
+            showPlannerStatus("✓ Deleted plan '" + p.name + "'", "ok");
+            if (editingPlanId === id) editingPlanId = null;
+            await loadPlannerConfig();
+        } catch (e) {
+            showPlannerStatus("Delete failed: " + (e.message || e), "err");
+        }
+    }
+
+    function buildPlanPayload() {
         const mixSum =
             (parseInt($("#cfgEasy").value)   || 0) +
             (parseInt($("#cfgMedium").value) || 0) +
             (parseInt($("#cfgHard").value)   || 0);
         if (mixSum !== 100) {
             showPlannerStatus("Difficulty mix must total 100%. Currently " + mixSum + "%.", "err");
-            return;
+            return null;
         }
-        const payload = {
-            id: 1,
+        const name = $("#cfgPlanName").value.trim();
+        if (!name) {
+            showPlannerStatus("Plan name is required.", "err");
+            return null;
+        }
+        return {
+            name:           name,
             duration_min:   parseInt($("#cfgDuration").value) || 30,
             pass_percent:   parseInt($("#cfgPass").value) || 50,
             max_violations: parseInt($("#cfgViol").value) || 3,
@@ -151,19 +291,36 @@
                 medium: (parseInt($("#cfgMedium").value) || 0) / 100,
                 hard:   (parseInt($("#cfgHard").value)   || 0) / 100
             },
-            allow_coding: $("#cfgAllowCoding").checked,
+            allow_coding:   $("#cfgAllowCoding").checked,
             answers_unlock: $("#cfgAnsUnlock").value.trim() || null,
             review_unlock:  $("#cfgRevUnlock").value.trim() || null,
             updated_at:     new Date().toISOString()
         };
+    }
+
+    async function savePlannerConfig(activateAfter) {
+        if (!editingPlanId) {
+            showPlannerStatus("No plan selected. Create one first or click Edit on a plan.", "err");
+            return;
+        }
+        const payload = buildPlanPayload();
+        if (!payload) return;
         try {
             const sb = getSupabaseClient();
-            // Upsert (insert or update single row with id=1)
             const { error } = await sb
-                .from("test_config")
-                .upsert(payload, { onConflict: "id" });
+                .from("test_plans")
+                .update(payload)
+                .eq("id", editingPlanId);
             if (error) throw error;
-            showPlannerStatus("✓ Saved — new test plan is now active for all candidates.", "ok");
+
+            if (activateAfter) {
+                const { error: e2 } = await sb.rpc("activate_plan", { plan_id: editingPlanId });
+                if (e2) throw e2;
+                showPlannerStatus("✓ Saved & activated. Now live.", "ok");
+            } else {
+                showPlannerStatus("✓ Saved.", "ok");
+            }
+            await loadPlannerConfig();
         } catch (e) {
             showPlannerStatus("Save failed: " + (e.message || e), "err");
         }
@@ -617,10 +774,14 @@
         });
 
         // ----- Planner buttons -----
-        const cfgSave = $("#cfgSave");
-        if (cfgSave) cfgSave.addEventListener("click", savePlannerConfig);
-        const cfgReload = $("#cfgReload");
-        if (cfgReload) cfgReload.addEventListener("click", loadPlannerConfig);
+        const cfgSave     = $("#cfgSave");
+        const cfgActivate = $("#cfgActivate");
+        const cfgReload   = $("#cfgReload");
+        const planNew     = $("#planNew");
+        if (cfgSave)     cfgSave.addEventListener("click",     () => savePlannerConfig(false));
+        if (cfgActivate) cfgActivate.addEventListener("click", () => savePlannerConfig(true));
+        if (cfgReload)   cfgReload.addEventListener("click",   loadPlannerConfig);
+        if (planNew)     planNew.addEventListener("click",     newPlan);
 
         // Live-sum counters
         ["cfgCntHTML","cfgCntCSS","cfgCntJS","cfgCntPY"].forEach(id => {
