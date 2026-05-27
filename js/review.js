@@ -26,8 +26,27 @@
     }
 
     // ---------- Time lock ----------
+    // Loads the active plan to get review_unlock setting.
+    let activePlanCache = null;
+    async function getActivePlan() {
+        if (activePlanCache) return activePlanCache;
+        try {
+            const sb = sbClient();
+            const { data } = await sb.from("test_plans")
+                .select("id, name, review_unlock")
+                .eq("is_active", true)
+                .maybeSingle();
+            activePlanCache = data || {};
+        } catch (e) {
+            activePlanCache = {};
+        }
+        return activePlanCache;
+    }
+
     function getUnlockDate() {
-        const iso = (SUPABASE_CONFIG && SUPABASE_CONFIG.reviewUnlockAt) || null;
+        // Prefer cached active plan from DB; fall back to config
+        let iso = (activePlanCache && activePlanCache.review_unlock) || null;
+        if (!iso) iso = (SUPABASE_CONFIG && SUPABASE_CONFIG.reviewUnlockAt) || null;
         if (!iso) return null;
         const d = new Date(iso);
         return isNaN(d.getTime()) ? null : d;
@@ -35,7 +54,7 @@
 
     function isUnlocked() {
         const d = getUnlockDate();
-        if (!d) return true;
+        if (!d) return true;   // no time configured = release immediately
         return Date.now() >= d.getTime();
     }
 
@@ -154,7 +173,10 @@
         proceed();
     }
 
-    function proceed() {
+    async function proceed() {
+        // Load active plan first so reviewUnlock from DB is honoured
+        await getActivePlan();
+
         if (!isUnlocked()) {
             show("lockedView");
             startCountdown();

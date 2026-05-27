@@ -27,11 +27,6 @@ const SUPABASE_CONFIG = {
     // ----- Admin / Answer key access -----
     adminPassword:   "tbdi@admin2025",  // CHANGE THIS in production
 
-    // Date/time (ISO string) before which the answer key page stays locked.
-    // null  = no time lock (only password needed)
-    // Example: "2026-05-23T15:00:00+05:30" (Indian Standard Time)
-    answersUnlockAt: null,
-
     // Date/time before which candidate review.html stays locked.
     // null = unlocked immediately.
     // Use this to delay candidate review until after the test window ends.

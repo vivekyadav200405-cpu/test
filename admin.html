@@ -489,13 +489,15 @@
                 </label>
 
                 <div class="form-group">
-                    <label>Answer key unlocks at (optional ISO datetime)</label>
-                    <input type="text" id="cfgAnsUnlock" placeholder="2026-05-30T18:00:00+05:30">
-                </div>
-                <div class="form-group">
-                    <label>Candidate review (review.html) unlocks at (optional)</label>
+                    <label>Result release time (when candidates can see their result)</label>
                     <input type="text" id="cfgRevUnlock" placeholder="2026-05-30T18:00:00+05:30">
+                    <small style="display:block;margin-top:4px;color:var(--muted);font-size:11px;">
+                        ISO datetime format. Before this time, candidates see a "results pending" screen.
+                        Leave blank to release immediately.
+                    </small>
                 </div>
+                <!-- hidden compatibility input for old code path -->
+                <input type="hidden" id="cfgAnsUnlock" value="">
 
                 <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;">
                     <button id="cfgReload"   type="button" class="btn btn-light">Reload</button>
