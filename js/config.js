@@ -30,5 +30,10 @@ const SUPABASE_CONFIG = {
     // Date/time (ISO string) before which the answer key page stays locked.
     // null  = no time lock (only password needed)
     // Example: "2026-05-23T15:00:00+05:30" (Indian Standard Time)
-    answersUnlockAt: null
+    answersUnlockAt: null,
+
+    // Date/time before which candidate review.html stays locked.
+    // null = unlocked immediately.
+    // Use this to delay candidate review until after the test window ends.
+    reviewUnlockAt: null
 };

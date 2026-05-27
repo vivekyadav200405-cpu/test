@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#c8102e">
+    <title>My Result — Toyota Boshoku</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .review-wrap { max-width: 900px; margin: 0 auto; padding: 16px; }
+        .login-card  { max-width: 420px; margin: 60px auto; }
+
+        .score-banner {
+            background: white;
+            border-radius: 10px;
+            padding: 16px;
+            box-shadow: var(--shadow);
+            margin-bottom: 14px;
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr 1fr;
+            gap: 10px;
+            text-align: center;
+        }
+        .score-banner .b { padding: 8px; border-radius: 6px; }
+        .score-banner .b .n { font-size: 22px; font-weight: 700; display: block; }
+        .score-banner .b .l { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+        .score-banner .b.ok  { background: rgba(40,167,69,.10); }
+        .score-banner .b.ok .n  { color: var(--success); }
+        .score-banner .b.bad { background: rgba(220,53,69,.10); }
+        .score-banner .b.bad .n { color: var(--danger); }
+        .score-banner .b.skp { background: rgba(108,117,125,.10); }
+        .score-banner .b.skp .n { color: var(--muted); }
+
+        .meta-bar {
+            background: white;
+            padding: 12px 14px;
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            margin-bottom: 14px;
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+            font-size: 13px;
+        }
+        .meta-bar strong { color: var(--secondary); }
+
+        .review-q {
+            background: white;
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            padding: 14px;
+            margin-bottom: 10px;
+            border-left: 4px solid #ccc;
+        }
+        .review-q.correct { border-left-color: var(--success); }
+        .review-q.wrong   { border-left-color: var(--danger); }
+        .review-q.skipped { border-left-color: var(--muted); opacity: 0.85; }
+
+        .review-q-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .qnum { font-weight: 700; color: var(--primary); }
+        .pill {
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            color: white;
+        }
+        .pill.correct { background: var(--success); }
+        .pill.wrong   { background: var(--danger); }
+        .pill.skipped { background: var(--muted); }
+
+        .qtext { font-size: 14px; line-height: 1.5; margin-bottom: 8px; white-space: pre-wrap; }
+        .opts  { list-style: none; padding: 0; margin: 0; }
+        .opts li {
+            padding: 6px 10px;
+            border-radius: 5px;
+            margin-bottom: 3px;
+            font-size: 13px;
+            background: #f8f9fa;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .opts li.correct {
+            background: rgba(40,167,69,.15);
+            color: var(--success);
+            font-weight: 600;
+        }
+        .opts li.picked-wrong {
+            background: rgba(220,53,69,.15);
+            color: var(--danger);
+            font-weight: 600;
+            text-decoration: line-through;
+        }
+        .opts .tag {
+            margin-left: auto;
+            font-size: 10px;
+            padding: 1px 8px;
+            border-radius: 8px;
+            background: white;
+            font-weight: 700;
+        }
+        .opts li.correct .tag       { background: var(--success); color: white; }
+        .opts li.picked-wrong .tag  { background: var(--danger);  color: white; }
+
+        .locked-card {
+            max-width: 520px;
+            margin: 60px auto;
+            text-align: center;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: var(--shadow);
+        }
+        .locked-icon { font-size: 50px; margin-bottom: 12px; }
+        .countdown   {
+            background: #fff8e1;
+            color: #8a6d00;
+            padding: 12px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 22px;
+            font-weight: bold;
+            margin: 14px 0;
+        }
+    </style>
+</head>
+<body>
+
+<!-- ============== LOGIN ============== -->
+<section id="loginGate" class="view active">
+    <div class="container">
+        <div class="card login-card">
+            <div class="brand">
+                <h1>My Result</h1>
+                <p class="subtitle">Toyota Boshoku — Candidate Login</p>
+            </div>
+            <form id="loginForm" class="form">
+                <div class="form-group">
+                    <label for="empInput">Employee Code</label>
+                    <input type="text" id="empInput" placeholder="Your employee code" autocomplete="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="pwInput">Password</label>
+                    <input type="password" id="pwInput" placeholder="Same as employee code" autocomplete="current-password" required>
+                    <small style="display:block;margin-top:6px;color:var(--muted);font-size:11px;">Default password = your Employee Code (case-insensitive)</small>
+                </div>
+                <div id="loginError" class="alert alert-error hidden"></div>
+                <button type="submit" class="btn btn-primary btn-block">View My Result &rarr;</button>
+            </form>
+            <p class="footer-note">
+                <a href="index.html" style="color: var(--muted);">&larr; Back to test portal</a>
+            </p>
+        </div>
+    </div>
+</section>
+
+<!-- ============== TIME-LOCKED ============== -->
+<section id="lockedView" class="view">
+    <div class="container">
+        <div class="locked-card">
+            <div class="locked-icon">🔒</div>
+            <h2 style="color: var(--primary);">Review unlocks soon</h2>
+            <p>You can see the correct answers after the test window closes.</p>
+            <p style="font-weight:600;margin:6px 0;" id="unlockTimeDisplay">—</p>
+            <div class="countdown" id="countdown">--:--:--</div>
+            <p style="font-size:12px;color:var(--muted);">Please come back after this countdown.</p>
+            <p style="margin-top:14px;"><a href="index.html" style="color:var(--muted);font-size:13px;">&larr; Back</a></p>
+        </div>
+    </div>
+</section>
+
+<!-- ============== REVIEW ============== -->
+<section id="reviewView" class="view">
+    <div class="review-wrap">
+
+        <div class="meta-bar">
+            <div>
+                <strong id="rName">—</strong> &middot;
+                <span id="rEmp">—</span> &middot;
+                <span id="rDept">—</span>
+            </div>
+            <div>
+                Submitted: <strong id="rDate">—</strong>
+                &nbsp;<button id="logoutBtn" class="btn btn-light" style="padding:4px 10px;min-height:30px;font-size:12px;">Logout</button>
+            </div>
+        </div>
+
+        <div class="score-banner">
+            <div class="b"><span class="n" id="rScore">0</span><span class="l">Score</span></div>
+            <div class="b ok"><span class="n" id="rCorrect">0</span><span class="l">Correct</span></div>
+            <div class="b bad"><span class="n" id="rWrong">0</span><span class="l">Wrong</span></div>
+            <div class="b skp"><span class="n" id="rSkipped">0</span><span class="l">Skipped</span></div>
+        </div>
+
+        <div id="reviewList"></div>
+
+    </div>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/review.js"></script>
+
+</body>
+</html>

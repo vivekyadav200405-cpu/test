@@ -332,17 +332,21 @@
         body.appendChild(stats);
 
         const answers = Array.isArray(row.answers) ? row.answers : [];
+        // Prefer per-row stored questions (randomised tests) ; fallback to global QUESTIONS for old rows
+        const qList = Array.isArray(row.questions) && row.questions.length
+            ? row.questions
+            : (typeof QUESTIONS !== "undefined" ? QUESTIONS : []);
 
-        if (typeof QUESTIONS === "undefined" || !QUESTIONS.length) {
+        if (!qList.length) {
             const warn = document.createElement("p");
-            warn.style.cssText = "color:var(--danger);text-align:center;padding:20px;";
-            warn.textContent = "QUESTIONS data not loaded — cannot render review.";
+            warn.style.cssText = "color:var(--muted);text-align:center;padding:20px;";
+            warn.textContent = "Questions not available for this submission (legacy row).";
             body.appendChild(warn);
             $("#codeModal").classList.add("open");
             return;
         }
 
-        QUESTIONS.forEach((q, i) => {
+        qList.forEach((q, i) => {
             const given   = answers[i];                  // 0..3 or null
             const correct = q.ans;
             const isSkip  = given === null || given === undefined;
@@ -355,8 +359,10 @@
             // Header
             const head = document.createElement("div");
             head.className = "mcq-q-head";
+            const topicLabel = escapeHtml(q.topic || q.section || "");
+            const levelLabel = q.level ? ' <small style="color:var(--muted);font-weight:400;">[' + escapeHtml(q.level) + ']</small>' : '';
             head.innerHTML =
-                '<span class="mcq-q-num">Q' + q.id + ' • ' + escapeHtml(q.section) + '</span>' +
+                '<span class="mcq-q-num">Q' + (i+1) + ' • ' + topicLabel + levelLabel + '</span>' +
                 '<span class="mcq-q-pill ' + (isOk ? "correct" : isWrong ? "wrong" : "skipped") + '">' +
                     (isOk ? "✓ Correct" : isWrong ? "✗ Wrong" : "— Skipped") + '</span>';
             card.appendChild(head);

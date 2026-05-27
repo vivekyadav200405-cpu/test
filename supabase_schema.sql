@@ -25,6 +25,13 @@ create table if not exists public.test_submissions (
     created_at      timestamptz  not null default now()
 );
 
+-- ----- New columns added later (safe to re-run) -----
+alter table public.test_submissions
+    add column if not exists ip_address   text,
+    add column if not exists time_taken_s int,
+    add column if not exists violations   int default 0,
+    add column if not exists questions    jsonb;
+
 -- ------------ 2. INDEXES ---------------------------------------
 create index if not exists idx_test_subs_emp_code
     on public.test_submissions (emp_code);
@@ -86,6 +93,47 @@ as $$
 $$;
 
 grant execute on function public.has_taken_test(text) to anon, authenticated;
+
+
+-- ================================================================
+-- 4b. DUPLICATE-CHECK by IP  (prevent same network re-attempt)
+-- ================================================================
+create or replace function public.has_taken_test_ip(client_ip text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+    select exists(
+        select 1 from public.test_submissions where ip_address = client_ip
+    );
+$$;
+
+grant execute on function public.has_taken_test_ip(text) to anon, authenticated;
+
+
+-- ================================================================
+-- 4c. GET MY SUBMISSION  (for user login + review)
+-- ----------------------------------------------------------------
+-- Returns the latest submission for the given emp_code, AS JSON.
+-- Frontend filters by case-insensitive match too.
+-- ================================================================
+create or replace function public.get_my_submission(emp text)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+    select to_jsonb(t)
+      from public.test_submissions t
+     where lower(t.emp_code) = lower(emp)
+     order by t.submitted_at desc
+     limit 1;
+$$;
+
+grant execute on function public.get_my_submission(text) to anon, authenticated;
 
 
 -- ================================================================

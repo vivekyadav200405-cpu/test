@@ -11,11 +11,21 @@
     // ------------------------------------------------------------
     const state = {
         candidate: null,
-        answers: new Array(QUESTIONS.length).fill(null),
+        questions: [],           // randomly-picked 50 Qs for THIS user
+        answers:   [],           // matching length, null = unattempted
         currentIndex: 0,
         timerHandle: null,
-        endTime: 0,
+        startedAt: 0,            // ms epoch
+        endTime:   0,            // ms epoch
         submitted: false,
+
+        // ---- Network ----
+        clientIp: null,          // fetched from ipify on welcome submit
+
+        // ---- Anti-cheat ----
+        violations: 0,
+        maxViolations: 3,
+        cheatBound: false,
 
         // ---- Coding test state ----
         codingAnswers: [],       // [{ q_id, language, code, attempted }]
@@ -68,21 +78,27 @@
                 return;
             }
 
-            // ----- Duplicate emp_code check -----
+            // ----- Duplicate emp_code + IP check -----
             startBtn.disabled = true;
-            startBtn.textContent = "Checking…";
+            startBtn.textContent = "Checking eligibility…";
             try {
-                const already = await hasAlreadyTakenTest(empCode);
-                if (already) {
+                // 1) Fetch client IP (best-effort)
+                state.clientIp = await fetchClientIp();
+
+                // 2) Check emp_code OR IP already used
+                const dup = await hasAlreadyTakenTest(empCode, state.clientIp);
+                if (dup.taken) {
                     errBox.innerHTML =
-                        "❌ Employee Code <strong>" + empCode + "</strong> has already taken this test.<br>" +
-                        "Each employee can submit only once. Please contact the trainer if you believe this is a mistake.";
+                        "❌ Test already submitted from " +
+                        (dup.by === "emp" ? "Employee Code <strong>" + empCode + "</strong>"
+                                          : "this device / network") +
+                        ".<br>Each employee/device can submit only once.<br>" +
+                        "If you believe this is a mistake, contact the trainer.";
                     show(errBox);
                     return;
                 }
             } catch (err) {
-                console.warn("Duplicate check failed (proceeding):", err);
-                // Allow test to proceed even if check fails — admin will see duplicates in DB
+                console.warn("Eligibility check failed (proceeding):", err);
             } finally {
                 startBtn.disabled = false;
                 startBtn.innerHTML = "Start Test &nbsp;&rarr;";
@@ -103,29 +119,63 @@
     }
 
     // ------------------------------------------------------------
-    // Duplicate-check (calls the has_taken_test RPC)
+    // Fetch client IP (free public service, no key needed)
     // ------------------------------------------------------------
-    async function hasAlreadyTakenTest(empCode) {
+    async function fetchClientIp() {
+        try {
+            const r = await fetch("https://api.ipify.org?format=json", { cache: "no-store" });
+            const j = await r.json();
+            return j.ip || null;
+        } catch (e) {
+            console.warn("IP fetch failed:", e);
+            return null;
+        }
+    }
+
+    // ------------------------------------------------------------
+    // Duplicate-check by emp_code OR IP address
+    // Returns: { taken: bool, by: "emp" | "ip" | null }
+    // ------------------------------------------------------------
+    async function hasAlreadyTakenTest(empCode, ip) {
         if (typeof SUPABASE_CONFIG === "undefined"
             || !SUPABASE_CONFIG.url
             || !SUPABASE_CONFIG.anonKey
             || SUPABASE_CONFIG.anonKey.indexOf("REPLACE_WITH") === 0) {
-            return false;  // no DB configured — skip
+            return { taken: false, by: null };
         }
-        if (!window.supabase) return false;
+        if (!window.supabase) return { taken: false, by: null };
 
         const sb = window.supabase.createClient(
             SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey
         );
-        const { data, error } = await sb.rpc("has_taken_test", { emp: empCode });
-        if (error) throw error;
-        return data === true;
+
+        // Check emp_code
+        try {
+            const { data } = await sb.rpc("has_taken_test", { emp: empCode });
+            if (data === true) return { taken: true, by: "emp" };
+        } catch (e) { /* RPC may not exist — ignore */ }
+
+        // Check IP
+        if (ip) {
+            try {
+                const { data } = await sb.rpc("has_taken_test_ip", { client_ip: ip });
+                if (data === true) return { taken: true, by: "ip" };
+            } catch (e) { /* RPC may not exist yet — ignore */ }
+        }
+
+        return { taken: false, by: null };
     }
 
     // ============================================================
     // VIEW 2 — QUIZ
     // ============================================================
     function startQuiz() {
+        // Build this user's randomised test set
+        state.questions = buildRandomTest();
+        state.answers   = new Array(state.questions.length).fill(null);
+        state.startedAt = Date.now();
+        state.violations = 0;
+
         showView("quizView");
 
         // Header info
@@ -138,12 +188,13 @@
         renderQuestion();
         startTimer();
         bindQuizEvents();
+        bindAntiCheat();        // tab/window switch detection
     }
 
     function buildPalette() {
         const palette = $("#palette");
         palette.innerHTML = "";
-        for (let i = 0; i < QUESTIONS.length; i++) {
+        for (let i = 0; i < state.questions.length; i++) {
             const btn = document.createElement("button");
             btn.type = "button";
             btn.className = "palette-btn";
@@ -157,7 +208,8 @@
     }
 
     function updatePalette() {
-        const buttons = $$(".palette-btn");
+        // Scope to MCQ palette only (#palette), NOT coding palette
+        const buttons = $("#palette").querySelectorAll(".palette-btn");
         buttons.forEach((btn, i) => {
             btn.classList.remove("answered", "current");
             if (state.answers[i] !== null) btn.classList.add("answered");
@@ -168,10 +220,11 @@
     }
 
     function renderQuestion() {
-        const q = QUESTIONS[state.currentIndex];
+        const total = state.questions.length;
+        const q = state.questions[state.currentIndex];
 
-        $("#qNumber").textContent  = "Question " + (state.currentIndex + 1) + " of " + QUESTIONS.length;
-        $("#qSection").textContent = q.section;
+        $("#qNumber").textContent  = "Question " + (state.currentIndex + 1) + " of " + total;
+        $("#qSection").textContent = q.topic + " • " + (q.level || "easy");
         $("#qText").textContent    = q.q;
 
         const list = $("#optionsList");
@@ -204,7 +257,7 @@
 
         // Buttons
         $("#prevBtn").disabled = state.currentIndex === 0;
-        if (state.currentIndex === QUESTIONS.length - 1) {
+        if (state.currentIndex === total - 1) {
             hide($("#nextBtn"));
             show($("#submitBtn"));
         } else {
@@ -216,7 +269,7 @@
     }
 
     function goTo(i) {
-        if (i < 0 || i >= QUESTIONS.length) return;
+        if (i < 0 || i >= state.questions.length) return;
         state.currentIndex = i;
         renderQuestion();
         window.scrollTo({ top: 0, behavior: "smooth" });
@@ -242,6 +295,106 @@
 
     function openSidebar()  { $("#quizSidebar").classList.add("open"); }
     function closeSidebar() { $("#quizSidebar").classList.remove("open"); }
+
+    // ------------------------------------------------------------
+    // ANTI-CHEAT
+    //  - Detect tab switch / window blur / fullscreen exit
+    //  - Block right-click, copy/paste, devtools shortcuts
+    //  - After N violations, auto-submit
+    // ------------------------------------------------------------
+    function bindAntiCheat() {
+        if (state.cheatBound) return;
+        state.cheatBound = true;
+
+        // Tab / window switch
+        document.addEventListener("visibilitychange", () => {
+            if (document.hidden && !state.submitted) recordViolation("switched tab/window");
+        });
+
+        // Window blur (alt+tab, other app focus)
+        window.addEventListener("blur", () => {
+            if (!state.submitted) recordViolation("window lost focus");
+        });
+
+        // Block right-click during test
+        document.addEventListener("contextmenu", (e) => {
+            if (isQuizActive()) e.preventDefault();
+        });
+
+        // Block common shortcuts: Copy/Cut/Paste/Save/PrintScreen/F12/DevTools
+        document.addEventListener("keydown", (e) => {
+            if (!isQuizActive()) return;
+            const key = (e.key || "").toLowerCase();
+            const ctrl = e.ctrlKey || e.metaKey;
+            const shift = e.shiftKey;
+            if (
+                key === "f12" ||
+                (ctrl && shift && ["i","j","c"].includes(key)) ||   // DevTools
+                (ctrl && ["c","v","x","s","u","p"].includes(key)) || // copy/paste/save/source/print
+                key === "printscreen"
+            ) {
+                e.preventDefault();
+                recordViolation("blocked shortcut: " + key);
+            }
+        });
+
+        // Block text selection during test (mild deterrent)
+        document.addEventListener("selectstart", (e) => {
+            if (isQuizActive() && e.target && e.target.closest("#quizView .question-card")) {
+                // Allow selection in inputs / options, block on question text
+                if (e.target.matches("h3, pre, p")) e.preventDefault();
+            }
+        });
+    }
+
+    function isQuizActive() {
+        return state.candidate && !state.submitted && $("#quizView").classList.contains("active");
+    }
+
+    function recordViolation(reason) {
+        if (state.submitted) return;
+        state.violations++;
+        console.warn("[anti-cheat] violation #" + state.violations + ": " + reason);
+
+        if (state.violations >= state.maxViolations) {
+            alert(
+                "⚠ You switched away from the test " + state.violations + " times.\n" +
+                "Test will be auto-submitted now."
+            );
+            finishAndSubmit();
+            return;
+        }
+
+        // Warning popup
+        showCheatWarning(state.violations, state.maxViolations);
+    }
+
+    function showCheatWarning(n, max) {
+        let modal = document.getElementById("cheatModal");
+        if (!modal) {
+            modal = document.createElement("div");
+            modal.id = "cheatModal";
+            modal.className = "modal";
+            modal.innerHTML =
+                '<div class="modal-content card" style="border-top:5px solid #dc3545;">' +
+                    '<h3 style="color:#dc3545;">⚠ Warning — Stay on the test page</h3>' +
+                    '<p id="cheatMsg" style="margin:10px 0;">—</p>' +
+                    '<p style="font-size:13px;color:#888;">After 3 warnings, your test will be auto-submitted.</p>' +
+                    '<div class="modal-actions">' +
+                        '<button id="cheatOk" class="btn btn-primary" style="grid-column:1/-1;">I understand</button>' +
+                    '</div>' +
+                '</div>';
+            document.body.appendChild(modal);
+            modal.querySelector("#cheatOk").addEventListener("click", () => {
+                modal.classList.add("hidden");
+            });
+        }
+        modal.querySelector("#cheatMsg").innerHTML =
+            "You switched away from the test window.<br>" +
+            "<strong>Warning " + n + " of " + max + "</strong>. " +
+            "Stay on this tab until you submit.";
+        modal.classList.remove("hidden");
+    }
 
     function openSubmitModal() {
         const count = state.answers.filter(a => a !== null).length;
@@ -294,17 +447,18 @@
 
         // Evaluate
         let correct = 0, wrong = 0, skipped = 0;
-        QUESTIONS.forEach((q, i) => {
+        state.questions.forEach((q, i) => {
             if (state.answers[i] === null)        skipped++;
             else if (state.answers[i] === q.ans)  correct++;
             else                                  wrong++;
         });
 
-        const total      = QUESTIONS.length;
-        const score      = correct;
-        const percentage = +((score / total) * 100).toFixed(2);
-        const passMark   = (SUPABASE_CONFIG && SUPABASE_CONFIG.passPercentage) || 50;
-        const status     = percentage >= passMark ? "PASS" : "FAIL";
+        const total       = state.questions.length;
+        const score       = correct;
+        const percentage  = +((score / total) * 100).toFixed(2);
+        const passMark    = (SUPABASE_CONFIG && SUPABASE_CONFIG.passPercentage) || 50;
+        const status      = percentage >= passMark ? "PASS" : "FAIL";
+        const timeTakenS  = Math.round((Date.now() - state.startedAt) / 1000);
 
         const submission = {
             full_name:       state.candidate.fullName,
@@ -319,7 +473,11 @@
             skipped:         skipped,
             percentage:      percentage,
             status:          status,
-            answers:         state.answers
+            answers:         state.answers,
+            questions:       state.questions,       // for review
+            ip_address:      state.clientIp,
+            time_taken_s:    timeTakenS,
+            violations:      state.violations
         };
 
         // Render result (before DB call) so user sees something fast
