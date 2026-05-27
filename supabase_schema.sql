@@ -27,11 +27,16 @@ create table if not exists public.test_submissions (
 
 -- ----- New columns added later (safe to re-run) -----
 alter table public.test_submissions
-    add column if not exists ip_address   text,
-    add column if not exists time_taken_s int,
-    add column if not exists violations   int default 0,
-    add column if not exists questions    jsonb,
-    add column if not exists test_plan_id bigint;
+    add column if not exists ip_address        text,
+    add column if not exists time_taken_s      int,
+    add column if not exists violations        int default 0,
+    add column if not exists questions         jsonb,
+    add column if not exists test_plan_id      bigint,
+    add column if not exists device_fingerprint text,
+    add column if not exists user_agent        text;
+
+create index if not exists idx_test_subs_fp
+    on public.test_submissions (device_fingerprint);
 
 create index if not exists idx_test_subs_plan
     on public.test_submissions (test_plan_id);
@@ -186,6 +191,28 @@ as $$
 $$;
 
 grant execute on function public.has_taken_test_ip(text) to anon, authenticated;
+
+
+-- ================================================================
+-- 4b-ii. DUPLICATE-CHECK by DEVICE FINGERPRINT
+-- ----------------------------------------------------------------
+-- Survives IP changes (same machine on different networks).
+-- ================================================================
+create or replace function public.has_taken_test_device(device_fp text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+    select exists(
+        select 1 from public.test_submissions s
+         where s.device_fingerprint = device_fp
+           and s.test_plan_id = (select id from public.test_plans where is_active = true limit 1)
+    );
+$$;
+
+grant execute on function public.has_taken_test_device(text) to anon, authenticated;
 
 
 -- ================================================================

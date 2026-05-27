@@ -19,13 +19,16 @@
         endTime:   0,            // ms epoch
         submitted: false,
 
-        // ---- Network ----
-        clientIp: null,          // fetched from ipify on welcome submit
+        // ---- Network / Device ----
+        clientIp: null,           // fetched from ipify on welcome submit
+        deviceFp: null,           // SHA-256 of UA + screen + canvas etc.
 
         // ---- Anti-cheat ----
         violations: 0,
         maxViolations: 3,
         cheatBound: false,
+        fullscreenWanted: false,  // becomes true once test starts
+        blockerOpen: false,
 
         // ---- Coding test state ----
         codingAnswers: [],       // [{ q_id, language, code, attempted }]
@@ -106,21 +109,36 @@
                 return;
             }
 
-            // ----- Duplicate emp_code + IP check -----
+            // ----- Duplicate emp_code + IP + device check -----
             startBtn.disabled = true;
             startBtn.textContent = "Checking eligibility…";
             try {
                 // 1) Fetch client IP (best-effort)
                 state.clientIp = await fetchClientIp();
+                // 2) Generate device fingerprint
+                state.deviceFp = await generateDeviceFingerprint();
 
-                // 2) Check emp_code OR IP already used
-                const dup = await hasAlreadyTakenTest(empCode, state.clientIp);
-                if (dup.taken) {
+                // 3) Local marker check — if this device already submitted this plan, block
+                const localKey = "tb_done_plan_" + (window.ACTIVE_PLAN_ID || "0");
+                if (localStorage.getItem(localKey) === "1") {
                     errBox.innerHTML =
-                        "❌ Test already submitted from " +
-                        (dup.by === "emp" ? "Employee Code <strong>" + empCode + "</strong>"
-                                          : "this device / network") +
-                        ".<br>Each employee/device can submit only once.<br>" +
+                        "❌ This device has already submitted the current test plan.<br>" +
+                        "If you believe this is a mistake, contact the trainer.";
+                    show(errBox);
+                    return;
+                }
+
+                // 4) DB check: emp / IP / device (all scoped to active plan)
+                const dup = await hasAlreadyTakenTest(empCode, state.clientIp, state.deviceFp);
+                if (dup.taken) {
+                    const reason =
+                        dup.by === "emp"    ? "Employee Code <strong>" + empCode + "</strong>" :
+                        dup.by === "ip"     ? "this network (IP)" :
+                        dup.by === "device" ? "this device" :
+                        "this submission";
+                    errBox.innerHTML =
+                        "❌ Test already submitted from " + reason + ".<br>" +
+                        "Each employee/device can submit only once per plan.<br>" +
                         "If you believe this is a mistake, contact the trainer.";
                     show(errBox);
                     return;
@@ -161,10 +179,10 @@
     }
 
     // ------------------------------------------------------------
-    // Duplicate-check by emp_code OR IP address
-    // Returns: { taken: bool, by: "emp" | "ip" | null }
+    // Duplicate-check by emp_code OR IP OR device fingerprint
+    // Returns: { taken: bool, by: "emp" | "ip" | "device" | null }
     // ------------------------------------------------------------
-    async function hasAlreadyTakenTest(empCode, ip) {
+    async function hasAlreadyTakenTest(empCode, ip, deviceFp) {
         if (typeof SUPABASE_CONFIG === "undefined"
             || !SUPABASE_CONFIG.url
             || !SUPABASE_CONFIG.anonKey
@@ -181,17 +199,89 @@
         try {
             const { data } = await sb.rpc("has_taken_test", { emp: empCode });
             if (data === true) return { taken: true, by: "emp" };
-        } catch (e) { /* RPC may not exist — ignore */ }
+        } catch (e) { /* ignore */ }
 
         // Check IP
         if (ip) {
             try {
                 const { data } = await sb.rpc("has_taken_test_ip", { client_ip: ip });
                 if (data === true) return { taken: true, by: "ip" };
-            } catch (e) { /* RPC may not exist yet — ignore */ }
+            } catch (e) { /* ignore */ }
+        }
+
+        // Check device fingerprint
+        if (deviceFp) {
+            try {
+                const { data } = await sb.rpc("has_taken_test_device", { device_fp: deviceFp });
+                if (data === true) return { taken: true, by: "device" };
+            } catch (e) { /* ignore */ }
         }
 
         return { taken: false, by: null };
+    }
+
+    // ------------------------------------------------------------
+    // Device fingerprint — SHA-256 of stable browser/device traits
+    // Persisted in localStorage so it stays consistent.
+    // ------------------------------------------------------------
+    async function generateDeviceFingerprint() {
+        // Reuse cached fingerprint if present
+        const cached = localStorage.getItem("tb_device_fp");
+        if (cached && cached.length === 32) return cached;
+
+        const parts = [
+            navigator.userAgent || "",
+            navigator.language  || "",
+            (navigator.languages || []).join(","),
+            screen.width + "x" + screen.height + "x" + screen.colorDepth,
+            screen.availWidth + "x" + screen.availHeight,
+            new Date().getTimezoneOffset(),
+            Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+            navigator.hardwareConcurrency || "",
+            navigator.deviceMemory || "",
+            navigator.platform || "",
+            navigator.vendor    || "",
+            (navigator.plugins ? navigator.plugins.length : 0),
+            window.devicePixelRatio || 1
+        ];
+
+        // Canvas fingerprint (stable per GPU/font stack)
+        try {
+            const c = document.createElement("canvas");
+            c.width = 200; c.height = 50;
+            const ctx = c.getContext("2d");
+            ctx.textBaseline = "top";
+            ctx.font = "14px 'Arial'";
+            ctx.fillStyle = "#f60";
+            ctx.fillRect(0, 0, 200, 50);
+            ctx.fillStyle = "#069";
+            ctx.fillText("Toyota Boshoku 2026 ☃", 4, 4);
+            ctx.strokeStyle = "rgba(0,0,0,0.5)";
+            ctx.beginPath(); ctx.arc(50, 25, 20, 0, Math.PI * 2); ctx.stroke();
+            parts.push(c.toDataURL().slice(-180));
+        } catch (e) {}
+
+        const input = parts.join("|");
+        try {
+            const buf = new TextEncoder().encode(input);
+            const hashBuf = await crypto.subtle.digest("SHA-256", buf);
+            const hex = Array.from(new Uint8Array(hashBuf))
+                .map(b => b.toString(16).padStart(2, "0"))
+                .join("");
+            const fp = hex.slice(0, 32);
+            localStorage.setItem("tb_device_fp", fp);
+            return fp;
+        } catch (e) {
+            // Fallback: simple string hash
+            let h = 0;
+            for (let i = 0; i < input.length; i++) {
+                h = ((h << 5) - h) + input.charCodeAt(i);
+                h |= 0;
+            }
+            const fp = ("0000000" + (h >>> 0).toString(16)).slice(-8).padStart(32, "0");
+            localStorage.setItem("tb_device_fp", fp);
+            return fp;
+        }
     }
 
     // ============================================================
@@ -203,6 +293,7 @@
         state.answers   = new Array(state.questions.length).fill(null);
         state.startedAt = Date.now();
         state.violations = 0;
+        state.fullscreenWanted = true;
 
         showView("quizView");
 
@@ -216,7 +307,32 @@
         renderQuestion();
         startTimer();
         bindQuizEvents();
-        bindAntiCheat();        // tab/window switch detection
+        bindAntiCheat();        // tab/window switch + fullscreen lockdown
+
+        // Request fullscreen (kicks in immediately on this user gesture)
+        requestFullscreen();
+    }
+
+    // ------------------------------------------------------------
+    // FULLSCREEN HELPERS
+    // ------------------------------------------------------------
+    function requestFullscreen() {
+        const el = document.documentElement;
+        const fn =
+            el.requestFullscreen ||
+            el.webkitRequestFullscreen ||
+            el.msRequestFullscreen ||
+            el.mozRequestFullScreen;
+        if (fn) {
+            try { fn.call(el).catch(() => {}); } catch (e) {}
+        }
+    }
+
+    function isFullscreen() {
+        return !!(document.fullscreenElement
+               || document.webkitFullscreenElement
+               || document.msFullscreenElement
+               || document.mozFullScreenElement);
     }
 
     function buildPalette() {
@@ -325,54 +441,137 @@
     function closeSidebar() { $("#quizSidebar").classList.remove("open"); }
 
     // ------------------------------------------------------------
-    // ANTI-CHEAT
-    //  - Detect tab switch / window blur / fullscreen exit
-    //  - Block right-click, copy/paste, devtools shortcuts
-    //  - After N violations, auto-submit
+    // ANTI-CHEAT  (strict mode)
+    //  - Force fullscreen during the test
+    //  - On fullscreen exit / tab switch / blur → BLOCKING modal
+    //  - Modal cannot be closed except by re-entering fullscreen
+    //  - Block right-click, copy/paste, devtools, Esc as far as possible
+    //  - Count violations; after N → auto-submit
     // ------------------------------------------------------------
     function bindAntiCheat() {
         if (state.cheatBound) return;
         state.cheatBound = true;
 
-        // Tab / window switch
+        // Tab / window visibility change
         document.addEventListener("visibilitychange", () => {
-            if (document.hidden && !state.submitted) recordViolation("switched tab/window");
+            if (document.hidden && isQuizActive()) {
+                recordViolation("switched tab/window");
+                showBlocker("You switched away from the test.");
+            } else if (!document.hidden && state.fullscreenWanted && isQuizActive() && !isFullscreen()) {
+                showBlocker("Test must run in fullscreen.");
+            }
         });
 
         // Window blur (alt+tab, other app focus)
         window.addEventListener("blur", () => {
-            if (!state.submitted) recordViolation("window lost focus");
+            if (isQuizActive()) {
+                recordViolation("window lost focus");
+                showBlocker("You left the test window.");
+            }
         });
+
+        // Window focus — close blocker only IF we're back AND in fullscreen
+        window.addEventListener("focus", () => {
+            if (isQuizActive() && isFullscreen()) {
+                hideBlocker();
+            }
+        });
+
+        // Fullscreen exit
+        document.addEventListener("fullscreenchange",      handleFullscreenChange);
+        document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+        document.addEventListener("msfullscreenchange",     handleFullscreenChange);
 
         // Block right-click during test
         document.addEventListener("contextmenu", (e) => {
             if (isQuizActive()) e.preventDefault();
         });
 
-        // Block common shortcuts: Copy/Cut/Paste/Save/PrintScreen/F12/DevTools
+        // Block common shortcuts including ESC (best-effort — browsers may still exit FS)
         document.addEventListener("keydown", (e) => {
             if (!isQuizActive()) return;
             const key = (e.key || "").toLowerCase();
             const ctrl = e.ctrlKey || e.metaKey;
             const shift = e.shiftKey;
+            const alt = e.altKey;
             if (
                 key === "f12" ||
-                (ctrl && shift && ["i","j","c"].includes(key)) ||   // DevTools
-                (ctrl && ["c","v","x","s","u","p"].includes(key)) || // copy/paste/save/source/print
-                key === "printscreen"
+                (ctrl && shift && ["i","j","c"].includes(key)) ||
+                (ctrl && ["c","v","x","s","u","p","r","w","t","n"].includes(key)) ||
+                key === "printscreen" ||
+                (alt && key === "tab") ||
+                (alt && key === "f4") ||
+                key === "escape"
             ) {
                 e.preventDefault();
                 recordViolation("blocked shortcut: " + key);
             }
         });
 
-        // Block text selection during test (mild deterrent)
+        // Block text selection
         document.addEventListener("selectstart", (e) => {
             if (isQuizActive() && e.target && e.target.closest("#quizView .question-card")) {
-                // Allow selection in inputs / options, block on question text
                 if (e.target.matches("h3, pre, p")) e.preventDefault();
             }
         });
+    }
+
+    function handleFullscreenChange() {
+        if (!state.fullscreenWanted) return;       // not in a test
+        if (state.submitted)         return;
+        if (!isFullscreen()) {
+            recordViolation("exited fullscreen");
+            showBlocker("You exited fullscreen.");
+        } else {
+            // Back in FS — close blocker
+            hideBlocker();
+        }
+    }
+
+    function showBlocker(reason) {
+        if (state.submitted || state.blockerOpen) return;
+        state.blockerOpen = true;
+        let modal = document.getElementById("cheatBlocker");
+        if (!modal) {
+            modal = document.createElement("div");
+            modal.id = "cheatBlocker";
+            modal.style.cssText =
+                "position:fixed;inset:0;background:rgba(20,0,0,0.95);z-index:99999;" +
+                "display:flex;align-items:center;justify-content:center;padding:20px;";
+            modal.innerHTML =
+                '<div style="background:white;border-radius:14px;padding:28px 26px;max-width:520px;text-align:center;border-top:6px solid #dc3545;">' +
+                    '<div style="font-size:48px;margin-bottom:8px;">⚠</div>' +
+                    '<h2 style="color:#dc3545;margin-bottom:8px;font-size:22px;">Test paused — return now</h2>' +
+                    '<p id="blkReason" style="color:#555;margin-bottom:10px;font-size:14px;">—</p>' +
+                    '<p id="blkCount" style="margin-bottom:14px;font-size:13px;color:#888;"></p>' +
+                    '<p style="margin-bottom:16px;font-size:13px;line-height:1.5;color:#444;">' +
+                        'Do NOT switch tabs/windows. Stay on this page in fullscreen.<br>' +
+                        'After <strong id="blkMax">3</strong> warnings the test will auto-submit.' +
+                    '</p>' +
+                    '<button id="blkContinue" style="background:#dc3545;color:white;border:none;padding:14px 28px;border-radius:8px;font-size:16px;font-weight:700;cursor:pointer;width:100%;">' +
+                        'Re-enter fullscreen &amp; continue' +
+                    '</button>' +
+                '</div>';
+            document.body.appendChild(modal);
+            document.getElementById("blkContinue").addEventListener("click", () => {
+                requestFullscreen();
+                // Hide only after a small delay so FS event has a chance to fire
+                setTimeout(() => {
+                    if (isFullscreen()) hideBlocker();
+                }, 200);
+            });
+        }
+        document.getElementById("blkReason").textContent = reason || "Stay on the test.";
+        document.getElementById("blkCount").innerHTML    =
+            "Warning <strong>" + state.violations + "</strong> of " + state.maxViolations;
+        document.getElementById("blkMax").textContent    = state.maxViolations;
+        modal.style.display = "flex";
+    }
+
+    function hideBlocker() {
+        const modal = document.getElementById("cheatBlocker");
+        if (modal) modal.style.display = "none";
+        state.blockerOpen = false;
     }
 
     function isQuizActive() {
@@ -384,44 +583,21 @@
         state.violations++;
         console.warn("[anti-cheat] violation #" + state.violations + ": " + reason);
 
+        // Update blocker count if it's currently visible
+        const countEl = document.getElementById("blkCount");
+        if (countEl) {
+            countEl.innerHTML = "Warning <strong>" + state.violations + "</strong> of " + state.maxViolations;
+        }
+
         if (state.violations >= state.maxViolations) {
+            hideBlocker();
             alert(
-                "⚠ You switched away from the test " + state.violations + " times.\n" +
+                "⚠ You violated test rules " + state.violations + " times.\n" +
                 "Test will be auto-submitted now."
             );
+            state.fullscreenWanted = false;     // don't keep nagging
             finishAndSubmit();
-            return;
         }
-
-        // Warning popup
-        showCheatWarning(state.violations, state.maxViolations);
-    }
-
-    function showCheatWarning(n, max) {
-        let modal = document.getElementById("cheatModal");
-        if (!modal) {
-            modal = document.createElement("div");
-            modal.id = "cheatModal";
-            modal.className = "modal";
-            modal.innerHTML =
-                '<div class="modal-content card" style="border-top:5px solid #dc3545;">' +
-                    '<h3 style="color:#dc3545;">⚠ Warning — Stay on the test page</h3>' +
-                    '<p id="cheatMsg" style="margin:10px 0;">—</p>' +
-                    '<p style="font-size:13px;color:#888;">After 3 warnings, your test will be auto-submitted.</p>' +
-                    '<div class="modal-actions">' +
-                        '<button id="cheatOk" class="btn btn-primary" style="grid-column:1/-1;">I understand</button>' +
-                    '</div>' +
-                '</div>';
-            document.body.appendChild(modal);
-            modal.querySelector("#cheatOk").addEventListener("click", () => {
-                modal.classList.add("hidden");
-            });
-        }
-        modal.querySelector("#cheatMsg").innerHTML =
-            "You switched away from the test window.<br>" +
-            "<strong>Warning " + n + " of " + max + "</strong>. " +
-            "Stay on this tab until you submit.";
-        modal.classList.remove("hidden");
     }
 
     function openSubmitModal() {
@@ -468,7 +644,16 @@
     async function finishAndSubmit() {
         if (state.submitted) return;
         state.submitted = true;
+        state.fullscreenWanted = false;
 
+        // Exit fullscreen now — test is over
+        try {
+            if (document.exitFullscreen) document.exitFullscreen().catch(()=>{});
+            else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+            else if (document.msExitFullscreen) document.msExitFullscreen();
+        } catch (e) {}
+
+        hideBlocker();
         clearInterval(state.timerHandle);
         hide($("#confirmModal"));
         show($("#loaderOverlay"));
@@ -506,8 +691,16 @@
             ip_address:      state.clientIp,
             time_taken_s:    timeTakenS,
             violations:      state.violations,
-            test_plan_id:    window.ACTIVE_PLAN_ID || null
+            test_plan_id:    window.ACTIVE_PLAN_ID || null,
+            device_fingerprint: state.deviceFp,
+            user_agent:      (navigator.userAgent || "").slice(0, 500)
         };
+
+        // Mark this device as having completed this plan (local guard)
+        try {
+            const localKey = "tb_done_plan_" + (window.ACTIVE_PLAN_ID || "0");
+            localStorage.setItem(localKey, "1");
+        } catch (e) {}
 
         // Render result (before DB call) so user sees something fast
         renderResult(submission);
