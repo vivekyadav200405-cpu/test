@@ -299,10 +299,35 @@
     }
 
     async function savePlannerConfig(activateAfter) {
+        // Auto-fallback: if no editing plan selected, fetch active plan id
         if (!editingPlanId) {
-            showPlannerStatus("No plan selected. Create one first or click Edit on a plan.", "err");
-            return;
+            try {
+                const sb0 = getSupabaseClient();
+                const { data } = await sb0.from("test_plans")
+                    .select("id, name").eq("is_active", true).maybeSingle();
+                if (data && data.id) {
+                    editingPlanId = data.id;
+                    if (!$("#cfgPlanName").value.trim()) {
+                        $("#cfgPlanName").value = data.name || "Default plan";
+                    }
+                    showPlannerStatus("Editing active plan: " + (data.name || ("#"+data.id)), "warn");
+                } else {
+                    // No plan exists — create one on the fly
+                    const name = ($("#cfgPlanName").value.trim() || "Default plan");
+                    const { data: created, error } = await sb0
+                        .from("test_plans")
+                        .insert({ name: name, is_active: true })
+                        .select().single();
+                    if (error) throw error;
+                    editingPlanId = created.id;
+                    showPlannerStatus("Created new plan '" + name + "' (active).", "ok");
+                }
+            } catch (e) {
+                showPlannerStatus("Could not find/create a plan: " + (e.message || e), "err");
+                return;
+            }
         }
+
         const payload = buildPlanPayload();
         if (!payload) return;
         try {
@@ -316,7 +341,7 @@
             if (activateAfter) {
                 const { error: e2 } = await sb.rpc("activate_plan", { plan_id: editingPlanId });
                 if (e2) throw e2;
-                showPlannerStatus("✓ Saved & activated. Now live.", "ok");
+                showPlannerStatus("✓ Saved & activated. Now live for all candidates.", "ok");
             } else {
                 showPlannerStatus("✓ Saved.", "ok");
             }
