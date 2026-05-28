@@ -118,18 +118,10 @@
                 // 2) Generate device fingerprint
                 state.deviceFp = await generateDeviceFingerprint();
 
-                // 3) Local marker check — multi-storage (localStorage + sessionStorage + cookie)
                 const planId = window.ACTIVE_PLAN_ID || "0";
-                if (deviceAlreadySubmitted(planId)) {
-                    errBox.innerHTML =
-                        "❌ This device has already submitted the current test plan.<br>" +
-                        "<small>Detected from local device record.</small><br>" +
-                        "If you believe this is a mistake, contact the trainer.";
-                    show(errBox);
-                    return;
-                }
 
-                // 4) DB check: emp / IP / device (all scoped to active plan)
+                // 3) DB check FIRST — authoritative
+                //    If admin deleted the record, this returns false → user can retake.
                 const dup = await hasAlreadyTakenTest(empCode, state.clientIp, state.deviceFp);
                 if (dup.taken) {
                     const reason =
@@ -143,6 +135,13 @@
                         "If you believe this is a mistake, contact the trainer.";
                     show(errBox);
                     return;
+                }
+
+                // 4) DB is clean — clear any stale local markers
+                //    (admin may have deleted this user's submission)
+                if (deviceAlreadySubmitted(planId)) {
+                    console.log("[duplicate] DB clean but local marker present → clearing (admin reset).");
+                    clearDeviceMarkers(planId);
                 }
             } catch (err) {
                 console.warn("Eligibility check failed (proceeding):", err);
@@ -207,6 +206,28 @@
                     const db = ev.target.result;
                     const tx = db.transaction("done", "readwrite");
                     tx.objectStore("done").put({emp: empCode, when: new Date().toISOString()}, key);
+                } catch (e) {}
+            };
+        } catch (e) {}
+    }
+
+    function clearDeviceMarkers(planId) {
+        const key = "tb_done_plan_" + planId;
+        try { localStorage.removeItem(key); }                 catch (e) {}
+        try { localStorage.removeItem(key + "_meta"); }       catch (e) {}
+        try { sessionStorage.removeItem(key); }               catch (e) {}
+        try {
+            document.cookie = key + "=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax";
+        } catch (e) {}
+        try {
+            const req = indexedDB.open("tb_quiz", 1);
+            req.onsuccess = (ev) => {
+                try {
+                    const db = ev.target.result;
+                    if (db.objectStoreNames.contains("done")) {
+                        const tx = db.transaction("done", "readwrite");
+                        tx.objectStore("done").delete(key);
+                    }
                 } catch (e) {}
             };
         } catch (e) {}

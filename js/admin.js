@@ -71,7 +71,7 @@
 
     async function loadQuestions() {
         const tbody = $("#qTbody");
-        tbody.innerHTML = '<tr><td colspan="7" class="empty">Loading…</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="empty">Loading…</td></tr>';
         try {
             const sb = getSupabaseClient();
             const { data, error } = await sb
@@ -79,18 +79,52 @@
                 .select("*")
                 .order("id", { ascending: false });
             if (error) throw error;
-            allQuestions = data || [];
-            renderQStats();
+
+            // DB-sourced questions
+            const dbQs = (data || []).map(r => ({
+                _src:   "db",
+                id:     r.id,
+                topic:  r.topic,
+                level:  r.level,
+                q:      r.q,
+                opts:   [r.opt_a, r.opt_b, r.opt_c, r.opt_d],
+                ans:    r.ans,
+                is_active: r.is_active,
+                _raw: r
+            }));
+
+            // Pool (read-only)
+            const poolQs = [];
+            if (typeof POOL !== "undefined") {
+                ["HTML","CSS","JS","PY"].forEach(topic => {
+                    (POOL[topic] || []).forEach(q => {
+                        poolQs.push({
+                            _src:   "pool",
+                            id:     "P-" + topic + "-" + q.id,   // unique key
+                            topic:  topic,
+                            level:  q.level,
+                            q:      q.q,
+                            opts:   q.opts,
+                            ans:    q.ans,
+                            is_active: true
+                        });
+                    });
+                });
+            }
+
+            allQuestions = [...dbQs, ...poolQs];
+            renderQStats(dbQs.length);
             renderQTable();
         } catch (e) {
             tbody.innerHTML =
-                '<tr><td colspan="7" class="empty" style="color:var(--danger);">' +
+                '<tr><td colspan="8" class="empty" style="color:var(--danger);">' +
                 'Error: ' + (e.message || e) + '</td></tr>';
         }
     }
 
-    function renderQStats() {
+    function renderQStats(dbCount) {
         $("#qStatTotal").textContent = allQuestions.length;
+        $("#qStatDb").textContent    = dbCount;
         const c = { HTML:0, CSS:0, JS:0, PY:0 };
         allQuestions.forEach(q => { if (c[q.topic] !== undefined) c[q.topic]++; });
         $("#qStatHtml").textContent = c.HTML;
@@ -100,12 +134,16 @@
     }
 
     function renderQTable() {
-        const q   = ($("#qSearch").value || "").trim().toLowerCase();
-        const ft  = $("#qFilterTopic").value;
-        const fl  = $("#qFilterLevel").value;
-        const tbody = $("#qTbody");
+        const q        = ($("#qSearch").value || "").trim().toLowerCase();
+        const ft       = $("#qFilterTopic").value;
+        const fl       = $("#qFilterLevel").value;
+        const showPool = $("#qShowPool") ? $("#qShowPool").checked : true;
+        const showDb   = $("#qShowDb")   ? $("#qShowDb").checked   : true;
+        const tbody    = $("#qTbody");
 
         const filtered = allQuestions.filter(r => {
+            if (!showPool && r._src === "pool") return false;
+            if (!showDb   && r._src === "db")   return false;
             if (ft && r.topic !== ft) return false;
             if (fl && r.level !== fl) return false;
             if (q && !(r.q || "").toLowerCase().includes(q)) return false;
@@ -113,31 +151,45 @@
         });
 
         if (!filtered.length) {
-            tbody.innerHTML = '<tr><td colspan="7" class="empty">No questions match your filter.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" class="empty">No questions match your filter.</td></tr>';
             return;
         }
 
-        tbody.innerHTML = filtered.map(r => {
-            const letters = ['A','B','C','D'];
+        // Limit rendering to 500 rows to avoid huge DOM
+        const limit = 500;
+        const truncated = filtered.length > limit;
+        const toShow = filtered.slice(0, limit);
+
+        const letters = ['A','B','C','D'];
+        tbody.innerHTML = toShow.map(r => {
             const correct = letters[r.ans] || "?";
-            const preview = (r.q || "").length > 80 ? (r.q.slice(0, 80) + "…") : r.q;
+            const preview = (r.q || "").length > 100 ? (r.q.slice(0, 100) + "…") : r.q;
+            const srcBadge = r._src === "db"
+                ? '<span class="pill" style="background:rgba(40,167,69,0.15);color:var(--success);">DB</span>'
+                : '<span class="pill" style="background:rgba(108,117,125,0.15);color:#555;">POOL</span>';
+            const actions = r._src === "db"
+                ? '<button data-qact="edit"   data-id="' + r.id + '" class="btn btn-light" style="padding:4px 10px;min-height:28px;font-size:12px;">Edit</button> ' +
+                  '<button data-qact="delete" data-id="' + r.id + '" class="btn btn-light" style="padding:4px 10px;min-height:28px;font-size:12px;color:var(--danger);">Del</button>'
+                : '<span style="color:var(--muted);font-size:11px;font-style:italic;">read-only</span>';
             return (
                 '<tr>' +
-                    '<td style="color:var(--muted);">' + r.id + '</td>' +
+                    '<td style="color:var(--muted);font-size:12px;">' + r.id + '</td>' +
+                    '<td>' + srcBadge + '</td>' +
                     '<td><span class="pill" style="background:rgba(200,16,46,0.10);color:var(--primary);">' + escapeHtml(r.topic) + '</span></td>' +
-                    '<td><small>' + escapeHtml(r.level) + '</small></td>' +
+                    '<td><small>' + escapeHtml(r.level || "—") + '</small></td>' +
                     '<td><div style="font-size:13px;line-height:1.4;white-space:normal;">' + escapeHtml(preview) + '</div></td>' +
                     '<td><strong style="color:var(--success);">' + correct + ')</strong></td>' +
                     '<td>' + (r.is_active
                         ? '<span class="pill pass">YES</span>'
                         : '<span class="pill fail">NO</span>') + '</td>' +
-                    '<td style="text-align:right;">' +
-                        '<button data-qact="edit"   data-id="' + r.id + '" class="btn btn-light"   style="padding:4px 10px;min-height:28px;font-size:12px;">Edit</button> ' +
-                        '<button data-qact="delete" data-id="' + r.id + '" class="btn btn-light"   style="padding:4px 10px;min-height:28px;font-size:12px;color:var(--danger);">Del</button>' +
-                    '</td>' +
+                    '<td style="text-align:right;">' + actions + '</td>' +
                 '</tr>'
             );
-        }).join("");
+        }).join("") +
+        (truncated
+            ? '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:14px;font-size:12px;font-style:italic;">' +
+              'Showing first ' + limit + ' of ' + filtered.length + '. Use filters to narrow down.</td></tr>'
+            : '');
 
         tbody.querySelectorAll("button[data-qact]").forEach(b => {
             b.addEventListener("click", () => {
@@ -152,16 +204,22 @@
     function openQuestionForm(id) {
         editingQId = id;
         if (id) {
-            const r = allQuestions.find(x => x.id === id);
+            // Find by either raw id (DB) or composite key (pool)
+            const r = allQuestions.find(x => x.id === id || x.id === String(id));
             if (!r) return;
+            if (r._src === "pool") {
+                alert("Pool questions are read-only. Use 'New Question' to add a custom version to the DB.");
+                editingQId = null;
+                return;
+            }
             $("#qFormTitle").textContent = "Edit Question #" + r.id;
             $("#qfTopic").value  = r.topic;
             $("#qfLevel").value  = r.level;
             $("#qfText").value   = r.q;
-            $("#qfOptA").value   = r.opt_a;
-            $("#qfOptB").value   = r.opt_b;
-            $("#qfOptC").value   = r.opt_c;
-            $("#qfOptD").value   = r.opt_d;
+            $("#qfOptA").value   = r.opts[0] || "";
+            $("#qfOptB").value   = r.opts[1] || "";
+            $("#qfOptC").value   = r.opts[2] || "";
+            $("#qfOptD").value   = r.opts[3] || "";
             $("#qfActive").checked = !!r.is_active;
             // Set correct radio
             const rad = document.querySelector('input[name="qfAns"][value="' + r.ans + '"]');
@@ -229,8 +287,12 @@
     }
 
     async function deleteQuestion(id) {
-        const r = allQuestions.find(x => x.id === id);
+        const r = allQuestions.find(x => x.id === id || x.id === String(id));
         if (!r) return;
+        if (r._src === "pool") {
+            alert("Pool questions cannot be deleted (built-in JS).");
+            return;
+        }
         if (!confirm("Delete question #" + id + "?\n\n" + r.q.slice(0, 100))) return;
         try {
             const sb = getSupabaseClient();
@@ -798,14 +860,14 @@
     function renderTable() {
         const tbody = $("#tableBody");
         if (!filteredRows.length) {
-            tbody.innerHTML = '<tr><td colspan="11" class="empty">No submissions match your filter.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="12" class="empty">No submissions match your filter.</td></tr>';
             return;
         }
         tbody.innerHTML = filteredRows.map((r, i) => `
-            <tr data-row-idx="${i}" title="Click to view all answers">
+            <tr data-row-idx="${i}" data-id="${r.id}" data-emp="${escapeHtml(r.emp_code)}" title="Click row to view answers">
                 <td>${i + 1}</td>
-                <td><strong>${escapeHtml(r.full_name)}</strong></td>
-                <td>${escapeHtml(r.emp_code)}</td>
+                <td><a href="#" class="emp-link" data-emp="${escapeHtml(r.emp_code)}" style="color:var(--primary);text-decoration:none;font-weight:600;">${escapeHtml(r.full_name)}</a></td>
+                <td><a href="#" class="emp-link" data-emp="${escapeHtml(r.emp_code)}" style="color:var(--primary);text-decoration:none;">${escapeHtml(r.emp_code)}</a></td>
                 <td>${escapeHtml(r.department || "—")}</td>
                 <td>${r.score} / ${r.total_questions}</td>
                 <td>${Number(r.percentage).toFixed(1)}%</td>
@@ -814,16 +876,77 @@
                 <td style="color:var(--muted);">${r.skipped}</td>
                 <td><span class="pill ${r.status === 'PASS' ? 'pass' : 'fail'}">${r.status}</span></td>
                 <td>${new Date(r.submitted_at).toLocaleString()}</td>
+                <td style="text-align:right;">
+                    <button data-act="del" data-id="${r.id}" class="btn btn-light" style="padding:4px 10px;min-height:28px;font-size:11px;color:var(--danger);">🗑 Delete</button>
+                </td>
             </tr>
         `).join("");
 
-        // Wire up row clicks for MCQ review
+        // Wire row click for MCQ review (whole row)
         tbody.querySelectorAll("tr[data-row-idx]").forEach(tr => {
-            tr.addEventListener("click", () => {
+            tr.addEventListener("click", (e) => {
+                // Ignore clicks on action buttons or emp-link
+                if (e.target.closest("button") || e.target.closest("a.emp-link")) return;
                 const idx = Number(tr.dataset.rowIdx);
                 openMcqModal(filteredRows[idx]);
             });
         });
+
+        // Wire emp-link clicks → filter by this employee
+        tbody.querySelectorAll("a.emp-link").forEach(a => {
+            a.addEventListener("click", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const emp = a.dataset.emp;
+                $("#searchBox").value = emp;
+                showActiveFilter("📌 Filtered to candidate: " + emp);
+                applyFiltersAndRender();
+            });
+        });
+
+        // Wire delete buttons
+        tbody.querySelectorAll("button[data-act='del']").forEach(b => {
+            b.addEventListener("click", (e) => {
+                e.stopPropagation();
+                deleteResult(Number(b.dataset.id));
+            });
+        });
+    }
+
+    function showActiveFilter(msg) {
+        const el = $("#activeFilter");
+        if (!el) return;
+        el.textContent = msg;
+        el.style.display = "block";
+    }
+    function hideActiveFilter() {
+        const el = $("#activeFilter");
+        if (el) el.style.display = "none";
+    }
+
+    async function deleteResult(id) {
+        const row = allRows.find(r => r.id === id);
+        if (!row) return;
+        const ok = confirm(
+            "Delete submission?\n\n" +
+            "Candidate: " + row.full_name + " (" + row.emp_code + ")\n" +
+            "Score: " + row.score + "/" + row.total_questions + "\n" +
+            "Submitted: " + new Date(row.submitted_at).toLocaleString() + "\n\n" +
+            "After deletion the candidate can re-attempt this test plan."
+        );
+        if (!ok) return;
+        try {
+            const sb = getSupabaseClient();
+            const { error } = await sb.from(SUPABASE_CONFIG.tableName || "test_submissions").delete().eq("id", id);
+            if (error) throw error;
+            // Remove from local arrays
+            allRows = allRows.filter(r => r.id !== id);
+            applyFiltersAndRender();
+            renderStats();
+            alert("✓ Deleted. Candidate may now re-attempt.");
+        } catch (e) {
+            alert("Delete failed: " + (e.message || e));
+        }
     }
 
     // ------------------------------------------------------------
@@ -979,8 +1102,19 @@
         $("#exportBtn").addEventListener("click", exportCsv);
         $("#logoutBtn").addEventListener("click", showLogin);
 
-        $("#searchBox").addEventListener("input", applyFiltersAndRender);
+        $("#searchBox").addEventListener("input", () => {
+            if (!$("#searchBox").value) hideActiveFilter();
+            applyFiltersAndRender();
+        });
         $("#filterStatus").addEventListener("change", applyFiltersAndRender);
+
+        const clearBtn = $("#clearFilters");
+        if (clearBtn) clearBtn.addEventListener("click", () => {
+            $("#searchBox").value = "";
+            $("#filterStatus").value = "";
+            hideActiveFilter();
+            applyFiltersAndRender();
+        });
 
         $$("#resultsTable thead th").forEach(th => {
             th.addEventListener("click", () => {
@@ -1025,9 +1159,13 @@
         const qSearch       = $("#qSearch");
         const qFilterTopic  = $("#qFilterTopic");
         const qFilterLevel  = $("#qFilterLevel");
+        const qShowPool     = $("#qShowPool");
+        const qShowDb       = $("#qShowDb");
         if (qSearch)      qSearch.addEventListener("input",       renderQTable);
         if (qFilterTopic) qFilterTopic.addEventListener("change", renderQTable);
         if (qFilterLevel) qFilterLevel.addEventListener("change", renderQTable);
+        if (qShowPool)    qShowPool.addEventListener("change",    renderQTable);
+        if (qShowDb)      qShowDb.addEventListener("change",      renderQTable);
 
         // Close question modal on backdrop click
         const qFormModal = $("#qFormModal");
