@@ -68,6 +68,7 @@ alter table public.test_submissions enable row level security;
 drop policy if exists "Anyone can insert submission" on public.test_submissions;
 drop policy if exists "Anyone can read submissions"  on public.test_submissions;
 drop policy if exists "Block reads from anon"        on public.test_submissions;
+drop policy if exists "Anyone can delete submission" on public.test_submissions;
 
 create policy "Anyone can insert submission"
     on public.test_submissions
@@ -78,6 +79,13 @@ create policy "Anyone can insert submission"
 create policy "Anyone can read submissions"
     on public.test_submissions
     for select
+    to anon, authenticated
+    using (true);
+
+-- Admin (anon, gated by UI password) can delete any row
+create policy "Anyone can delete submission"
+    on public.test_submissions
+    for delete
     to anon, authenticated
     using (true);
 
@@ -348,6 +356,7 @@ alter table public.coding_submissions enable row level security;
 
 drop policy if exists "Anyone can insert coding submission" on public.coding_submissions;
 drop policy if exists "Anyone can read coding submissions"  on public.coding_submissions;
+drop policy if exists "Anyone can delete coding submission" on public.coding_submissions;
 
 create policy "Anyone can insert coding submission"
     on public.coding_submissions
@@ -358,6 +367,12 @@ create policy "Anyone can insert coding submission"
 create policy "Anyone can read coding submissions"
     on public.coding_submissions
     for select
+    to anon, authenticated
+    using (true);
+
+create policy "Anyone can delete coding submission"
+    on public.coding_submissions
+    for delete
     to anon, authenticated
     using (true);
 

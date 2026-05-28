@@ -855,6 +855,71 @@
         });
 
         renderTable();
+        renderPerformanceCard();
+    }
+
+    // ------------------------------------------------------------
+    // Performance card — appears when filter narrows to ONE candidate
+    // ------------------------------------------------------------
+    function renderPerformanceCard() {
+        const card = $("#perfCard");
+        if (!card) return;
+        if (!filteredRows.length) { card.style.display = "none"; return; }
+
+        // Detect if all rows belong to ONE candidate (by emp_code)
+        const empSet = new Set(filteredRows.map(r => (r.emp_code || "").toLowerCase()));
+        if (empSet.size !== 1) { card.style.display = "none"; return; }
+
+        const candidate = filteredRows[0];
+        const rows = filteredRows.slice().sort((a, b) =>
+            new Date(b.submitted_at) - new Date(a.submitted_at));   // newest first
+
+        // Header
+        $("#perfName").textContent = candidate.full_name;
+        $("#perfMeta").innerHTML =
+            "Emp Code: <strong>" + escapeHtml(candidate.emp_code) + "</strong>" +
+            "  •  Dept: <strong>" + escapeHtml(candidate.department || "—") + "</strong>" +
+            "  •  Last attempt: " + new Date(rows[0].submitted_at).toLocaleString();
+
+        // Stats
+        const total   = rows.length;
+        const passed  = rows.filter(r => r.status === "PASS").length;
+        const failed  = total - passed;
+        const best    = rows.reduce((mx, r) => Math.max(mx, Number(r.score) || 0), 0);
+        const avgPct  = total ? (rows.reduce((s, r) => s + Number(r.percentage || 0), 0) / total) : 0;
+        const planIds = new Set(rows.map(r => r.test_plan_id).filter(Boolean));
+
+        $("#perfAttempts").textContent = total;
+        $("#perfPlans").textContent    = planIds.size || 1;
+        $("#perfPass").textContent     = passed;
+        $("#perfFail").textContent     = failed;
+        $("#perfBest").textContent     = best;
+        $("#perfAvg").textContent      = avgPct.toFixed(1) + "%";
+
+        // History list
+        const hist = $("#perfHistory");
+        hist.innerHTML = rows.map(r => {
+            const planName = r.test_plan_id
+                ? ("Plan #" + r.test_plan_id)
+                : "Legacy";
+            const ttSec = Number(r.time_taken_s || 0);
+            const ttStr = ttSec ? (Math.floor(ttSec/60) + "m " + (ttSec%60) + "s") : "—";
+            const pillCls = r.status === "PASS" ? "pass" : "fail";
+            const score = r.score + "/" + r.total_questions;
+            const pct   = Number(r.percentage || 0).toFixed(1) + "%";
+            const date  = new Date(r.submitted_at).toLocaleString();
+            return (
+                '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:#f8f9fa;border-radius:6px;font-size:13px;flex-wrap:wrap;">' +
+                    '<span class="pill ' + pillCls + '">' + r.status + '</span>' +
+                    '<span><strong>' + score + '</strong> (' + pct + ')</span>' +
+                    '<span style="color:var(--muted);">' + planName + '</span>' +
+                    '<span style="color:var(--muted);">⏱ ' + ttStr + '</span>' +
+                    '<span style="color:#888;font-size:12px;margin-left:auto;">' + date + '</span>' +
+                '</div>'
+            );
+        }).join("");
+
+        card.style.display = "block";
     }
 
     function renderTable() {
@@ -937,13 +1002,21 @@
         if (!ok) return;
         try {
             const sb = getSupabaseClient();
-            const { error } = await sb.from(SUPABASE_CONFIG.tableName || "test_submissions").delete().eq("id", id);
+            // Use .select() to confirm rows were actually deleted (RLS-safe)
+            const { data, error } = await sb
+                .from(SUPABASE_CONFIG.tableName || "test_submissions")
+                .delete()
+                .eq("id", id)
+                .select();
             if (error) throw error;
+            if (!data || !data.length) {
+                throw new Error("0 rows deleted. RLS DELETE policy may be missing — re-run supabase_schema.sql.");
+            }
             // Remove from local arrays
             allRows = allRows.filter(r => r.id !== id);
             applyFiltersAndRender();
             renderStats();
-            alert("✓ Deleted. Candidate may now re-attempt.");
+            alert("✓ Deleted (" + data.length + " row). Candidate may now re-attempt.");
         } catch (e) {
             alert("Delete failed: " + (e.message || e));
         }
@@ -1113,6 +1186,15 @@
             $("#searchBox").value = "";
             $("#filterStatus").value = "";
             hideActiveFilter();
+            applyFiltersAndRender();
+        });
+
+        const perfClose = $("#perfClose");
+        if (perfClose) perfClose.addEventListener("click", () => {
+            $("#searchBox").value = "";
+            $("#filterStatus").value = "";
+            hideActiveFilter();
+            $("#perfCard").style.display = "none";
             applyFiltersAndRender();
         });
 

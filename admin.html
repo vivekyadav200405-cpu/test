@@ -364,6 +364,31 @@
 
         <div id="activeFilter" style="display:none;background:rgba(40,167,69,0.12);color:var(--success);padding:8px 12px;border-radius:6px;margin-bottom:10px;font-size:13px;font-weight:600;"></div>
 
+        <!-- ===== Performance card (shown when filtered to single emp) ===== -->
+        <div id="perfCard" style="display:none;background:white;border-radius:12px;padding:18px 20px;box-shadow:var(--shadow);margin-bottom:14px;border-top:4px solid var(--primary);">
+            <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px;">
+                <div>
+                    <h2 id="perfName" style="color:var(--primary);font-size:22px;margin:0;">—</h2>
+                    <p id="perfMeta" style="color:var(--muted);font-size:13px;margin-top:4px;">—</p>
+                </div>
+                <div>
+                    <button id="perfClose" type="button" class="btn btn-light" style="padding:6px 12px;min-height:32px;font-size:12px;">✕ Clear</button>
+                </div>
+            </div>
+
+            <div class="stats" style="margin-bottom:14px;">
+                <div class="stat"><span class="num" id="perfAttempts">0</span><span class="label">Attempts</span></div>
+                <div class="stat"><span class="num" id="perfPlans">0</span><span class="label">Plans Taken</span></div>
+                <div class="stat" style="background:rgba(40,167,69,0.10);"><span class="num" id="perfPass" style="color:var(--success);">0</span><span class="label">Passed</span></div>
+                <div class="stat" style="background:rgba(220,53,69,0.10);"><span class="num" id="perfFail" style="color:var(--danger);">0</span><span class="label">Failed</span></div>
+                <div class="stat"><span class="num" id="perfBest">0</span><span class="label">Best Score</span></div>
+                <div class="stat"><span class="num" id="perfAvg">0%</span><span class="label">Avg. %</span></div>
+            </div>
+
+            <h4 style="color:var(--secondary);font-size:14px;margin-bottom:8px;">Attempt History</h4>
+            <div id="perfHistory" style="display:flex;flex-direction:column;gap:6px;"></div>
+        </div>
+
         <div class="table-wrap">
             <table class="results" id="resultsTable">
                 <thead>
