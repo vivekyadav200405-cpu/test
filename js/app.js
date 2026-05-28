@@ -417,10 +417,19 @@
 
         $("#qNumber").textContent  = "Question " + (state.currentIndex + 1) + " of " + total;
         $("#qSection").textContent = q.topic + " • " + (q.level || "easy");
-        $("#qText").textContent    = q.q;
+
+        // Format question text:
+        // - Plain text via textContent (XSS-safe)
+        // - If question looks like code (contains <tag>, multiple lines, def/function/console), apply mono styling
+        const qTextEl = $("#qText");
+        qTextEl.textContent = q.q;
+        const looksLikeCode = looksCodey(q.q);
+        qTextEl.classList.toggle("has-code", looksLikeCode);
 
         const list = $("#optionsList");
         list.innerHTML = "";
+
+        const letters = ["A", "B", "C", "D"];
 
         q.opts.forEach((opt, idx) => {
             const wrap  = document.createElement("label");
@@ -438,11 +447,23 @@
                 updatePalette();
             });
 
+            const letterBox = document.createElement("span");
+            letterBox.className   = "opt-letter";
+            letterBox.textContent = letters[idx] || "?";
+
             const span = document.createElement("span");
-            span.className   = "option-label";
-            span.textContent = opt;
+            span.className = "option-label";
+            // If option text looks code-y, render text inside a <code> element
+            if (looksCodey(opt)) {
+                const code = document.createElement("code");
+                code.textContent = opt;
+                span.appendChild(code);
+            } else {
+                span.textContent = opt;
+            }
 
             wrap.appendChild(input);
+            wrap.appendChild(letterBox);
             wrap.appendChild(span);
             list.appendChild(wrap);
         });
@@ -577,7 +598,15 @@
     }
 
     function showBlocker(reason) {
-        if (state.submitted || state.blockerOpen) return;
+        if (state.submitted) return;
+
+        // If user has hit max violations, auto-submit instead of showing blocker
+        if (state.violations >= state.maxViolations) {
+            hideBlocker();
+            finishAndSubmit();
+            return;
+        }
+
         state.blockerOpen = true;
         let modal = document.getElementById("cheatBlocker");
         if (!modal) {
@@ -597,18 +626,27 @@
                         'After <strong id="blkMax">3</strong> warnings the test will auto-submit.' +
                     '</p>' +
                     '<button id="blkContinue" style="background:#dc3545;color:white;border:none;padding:14px 28px;border-radius:8px;font-size:16px;font-weight:700;cursor:pointer;width:100%;">' +
-                        'Re-enter fullscreen &amp; continue' +
+                        'Continue test (re-enter fullscreen)' +
                     '</button>' +
                 '</div>';
             document.body.appendChild(modal);
-            document.getElementById("blkContinue").addEventListener("click", () => {
-                requestFullscreen();
-                // Hide only after a small delay so FS event has a chance to fire
-                setTimeout(() => {
-                    if (isFullscreen()) hideBlocker();
-                }, 200);
-            });
         }
+
+        // Re-bind click handler using onclick (replaces any previous handler)
+        const btn = document.getElementById("blkContinue");
+        if (btn) {
+            btn.onclick = function () {
+                // 1) Try fullscreen (best-effort, must be inside user gesture)
+                try { requestFullscreen(); } catch (e) {}
+                // 2) ALWAYS hide blocker so user is never stuck
+                hideBlocker();
+                // 3) If user has already hit max violations, auto-submit
+                if (state.violations >= state.maxViolations) {
+                    finishAndSubmit();
+                }
+            };
+        }
+
         document.getElementById("blkReason").textContent = reason || "Stay on the test.";
         document.getElementById("blkCount").innerHTML    =
             "Warning <strong>" + state.violations + "</strong> of " + state.maxViolations;
@@ -637,13 +675,21 @@
             countEl.innerHTML = "Warning <strong>" + state.violations + "</strong> of " + state.maxViolations;
         }
 
+        // Auto-submit after max violations — don't show blocker anymore
         if (state.violations >= state.maxViolations) {
+            state.fullscreenWanted = false;
             hideBlocker();
-            alert(
-                "⚠ You violated test rules " + state.violations + " times.\n" +
-                "Test will be auto-submitted now."
-            );
-            state.fullscreenWanted = false;     // don't keep nagging
+            // small toast instead of blocking alert (which can freeze the flow)
+            try {
+                const toast = document.createElement("div");
+                toast.style.cssText =
+                    "position:fixed;top:20px;left:50%;transform:translateX(-50%);" +
+                    "background:#dc3545;color:white;padding:14px 22px;border-radius:8px;" +
+                    "font-weight:700;font-size:14px;z-index:99999;box-shadow:0 4px 14px rgba(0,0,0,0.3);";
+                toast.textContent = "⚠ Limit reached. Auto-submitting test…";
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 4000);
+            } catch (e) {}
             finishAndSubmit();
         }
     }
@@ -1297,6 +1343,18 @@
         return String(s == null ? "" : s)
             .replace(/&/g, "&amp;").replace(/</g, "&lt;")
             .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    // Detect if a string looks like code (for mono styling)
+    function looksCodey(s) {
+        if (!s) return false;
+        const txt = String(s);
+        if (txt.indexOf("\n") !== -1)        return true;   // multi-line
+        if (/<\w+>?/.test(txt))              return true;   // HTML tag
+        if (/[{};]/.test(txt))               return true;   // code chars
+        if (/^\s*(def|function|class|const|let|var|return|print|for|while|if)\b/.test(txt)) return true;
+        if (/=>|::|->/.test(txt))            return true;
+        return false;
     }
 
     // ------------------------------------------------------------

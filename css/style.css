@@ -354,12 +354,28 @@ body {
 }
 
 .question-text {
-    font-size: 16px;
-    line-height: 1.6;
+    font-size: 17px;
+    line-height: 1.75;
     color: var(--text);
-    margin-bottom: 18px;
+    margin-bottom: 22px;
     white-space: pre-wrap;
+    word-break: break-word;
     font-weight: 500;
+    padding: 18px 22px;
+    background: linear-gradient(135deg, #fafbfc 0%, #f3f4f6 100%);
+    border-left: 4px solid var(--primary);
+    border-radius: 10px;
+    min-height: 70px;
+    letter-spacing: 0.1px;
+}
+
+/* Render code-like text (HTML tags, code snippets) with monospace style */
+.question-text.has-code {
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 15px;
+    background: #1e1e1e;
+    color: #d4d4d4;
+    border-left-color: var(--accent);
 }
 
 .options-list {
@@ -401,7 +417,41 @@ body {
     flex: 1;
     white-space: pre-wrap;
     word-break: break-word;
-    line-height: 1.5;
+    line-height: 1.6;
+    font-family: inherit;
+}
+
+/* Letter prefix (A. B. C. D.) before option text */
+.option .opt-letter {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    height: 28px;
+    background: white;
+    border: 2px solid var(--border);
+    border-radius: 50%;
+    font-weight: 700;
+    font-size: 13px;
+    color: #666;
+    margin-right: 10px;
+    flex-shrink: 0;
+}
+.option.selected .opt-letter {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
+/* If option contains code-like tokens (<, {, ;), render in monospace */
+.option-label code,
+.option-label .mono {
+    font-family: 'Consolas', 'Monaco', monospace;
+    background: #f1f3f5;
+    color: #c8102e;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 14px;
 }
 
 .nav-buttons {
