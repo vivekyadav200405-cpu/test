@@ -162,8 +162,10 @@
 
         const letters = ['A','B','C','D'];
         tbody.innerHTML = toShow.map(r => {
-            const correct = letters[r.ans] || "?";
-            const preview = (r.q || "").length > 100 ? (r.q.slice(0, 100) + "…") : r.q;
+            const letter      = letters[r.ans] || "?";
+            const correctText = (r.opts && r.opts[r.ans]) ? r.opts[r.ans] : "";
+            const correctTrunc = correctText.length > 80 ? (correctText.slice(0, 80) + "…") : correctText;
+            const preview = (r.q || "").length > 120 ? (r.q.slice(0, 120) + "…") : r.q;
             const srcBadge = r._src === "db"
                 ? '<span class="pill" style="background:rgba(40,167,69,0.15);color:var(--success);">DB</span>'
                 : '<span class="pill" style="background:rgba(108,117,125,0.15);color:#555;">POOL</span>';
@@ -178,7 +180,12 @@
                     '<td><span class="pill" style="background:rgba(200,16,46,0.10);color:var(--primary);">' + escapeHtml(r.topic) + '</span></td>' +
                     '<td><small>' + escapeHtml(r.level || "—") + '</small></td>' +
                     '<td><div style="font-size:13px;line-height:1.4;white-space:normal;">' + escapeHtml(preview) + '</div></td>' +
-                    '<td><strong style="color:var(--success);">' + correct + ')</strong></td>' +
+                    '<td>' +
+                        '<div style="display:flex;align-items:flex-start;gap:6px;font-size:13px;line-height:1.4;white-space:normal;">' +
+                            '<strong style="color:var(--success);flex-shrink:0;">' + letter + ')</strong>' +
+                            '<span>' + escapeHtml(correctTrunc) + '</span>' +
+                        '</div>' +
+                    '</td>' +
                     '<td>' + (r.is_active
                         ? '<span class="pill pass">YES</span>'
                         : '<span class="pill fail">NO</span>') + '</td>' +
