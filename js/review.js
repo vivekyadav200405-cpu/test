@@ -245,16 +245,31 @@
         const list = $("#reviewList");
         list.innerHTML = "";
 
-        const qs = Array.isArray(r.questions) ? r.questions : [];
+        let qs = Array.isArray(r.questions) ? r.questions : [];
         const as = Array.isArray(r.answers)   ? r.answers   : [];
+
+        let usingLegacy = false;
+        if (!qs.length && typeof LEGACY_QUESTIONS !== "undefined" && LEGACY_QUESTIONS.length) {
+            qs = LEGACY_QUESTIONS;
+            usingLegacy = true;
+        }
 
         if (!qs.length) {
             list.innerHTML =
                 '<div class="card" style="padding:20px;text-align:center;color:var(--muted);">' +
-                'Detailed question review is not available for this submission ' +
-                '(submitted before randomised tests were enabled).' +
+                'Detailed question review is not available for this submission.' +
                 '</div>';
             return;
+        }
+
+        if (usingLegacy) {
+            const note = document.createElement("div");
+            note.style.cssText =
+                "background:#fff8e1;color:#8a6d00;padding:10px 14px;border-radius:6px;" +
+                "margin-bottom:14px;font-size:12px;border-left:3px solid #f5a623;";
+            note.innerHTML =
+                "<strong>📜 Legacy submission</strong> — shown against the original fixed 50-question set.";
+            list.appendChild(note);
         }
 
         qs.forEach((q, i) => {

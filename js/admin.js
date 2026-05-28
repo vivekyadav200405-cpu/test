@@ -1054,18 +1054,40 @@
         body.appendChild(stats);
 
         const answers = Array.isArray(row.answers) ? row.answers : [];
-        // Prefer per-row stored questions (randomised tests) ; fallback to global QUESTIONS for old rows
-        const qList = Array.isArray(row.questions) && row.questions.length
-            ? row.questions
-            : (typeof QUESTIONS !== "undefined" ? QUESTIONS : []);
+
+        // Question source priority:
+        //  1) Per-row stored questions (randomised tests)
+        //  2) LEGACY_QUESTIONS (original fixed 50 Qs) — for old submissions
+        //  3) Empty fallback
+        let qList = [];
+        let usingLegacy = false;
+        if (Array.isArray(row.questions) && row.questions.length) {
+            qList = row.questions;
+        } else if (typeof LEGACY_QUESTIONS !== "undefined" && LEGACY_QUESTIONS.length) {
+            qList = LEGACY_QUESTIONS;
+            usingLegacy = true;
+        } else if (typeof QUESTIONS !== "undefined") {
+            qList = QUESTIONS;
+        }
 
         if (!qList.length) {
             const warn = document.createElement("p");
             warn.style.cssText = "color:var(--muted);text-align:center;padding:20px;";
-            warn.textContent = "Questions not available for this submission (legacy row).";
+            warn.textContent = "Questions not available for this submission.";
             body.appendChild(warn);
             $("#codeModal").classList.add("open");
             return;
+        }
+
+        if (usingLegacy) {
+            const note = document.createElement("div");
+            note.style.cssText =
+                "background:#fff8e1;color:#8a6d00;padding:10px 14px;border-radius:6px;" +
+                "margin-bottom:14px;font-size:12px;border-left:3px solid #f5a623;";
+            note.innerHTML =
+                "<strong>📜 Legacy submission</strong> — shown against the original fixed 50-question set " +
+                "(this submission was made before randomised tests were enabled).";
+            body.appendChild(note);
         }
 
         qList.forEach((q, i) => {
