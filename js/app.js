@@ -959,10 +959,33 @@
             c.fullName + "  •  " + c.empCode +
             (c.department !== "—" ? "  •  " + c.department : "");
 
-        // Build editor (once)
+        // Build the question palette + bind nav FIRST, so even if the
+        // editor fails to initialise the question UI is always populated.
+        buildCodingPalette();
+        bindCodingEvents();
+
+        // Build editor (once) — never let a CodeMirror/addon failure
+        // block the rest of the coding view from rendering.
         if (!state.codingEditor) {
-            const ta = document.getElementById("codeEditor");
-            state.codingEditor = CodeMirror.fromTextArea(ta, {
+            state.codingEditor = createCodingEditor();
+        }
+
+        renderCodingQuestion();
+    }
+
+    // ------------------------------------------------------------
+    // Create the code editor. Tries CodeMirror; on ANY failure it
+    // falls back to a styled plain <textarea> exposing the small
+    // subset of the CodeMirror API the rest of the code relies on.
+    // ------------------------------------------------------------
+    function createCodingEditor() {
+        const ta = document.getElementById("codeEditor");
+        if (!ta) return null;
+
+        let editor;
+        try {
+            if (typeof CodeMirror === "undefined") throw new Error("CodeMirror not loaded");
+            editor = CodeMirror.fromTextArea(ta, {
                 lineNumbers: true,
                 mode: "python",
                 theme: "material-darker",
@@ -971,42 +994,91 @@
                 indentWithTabs: false,
                 lineWrapping: true,
                 autoCloseBrackets: true,
-                autoCloseTags: true,                  // auto-close HTML tags
                 matchBrackets: true,
-                matchTags: { bothTags: true },
-                hintOptions: {
-                    completeSingle: false,
-                    closeOnUnfocus: true
-                },
                 extraKeys: {
                     "Ctrl-Space": "autocomplete",
                     "Tab":        handleEditorTab
                 }
             });
 
+            // Optional niceties — enable only if their addons actually
+            // loaded, so a missing addon can never crash the editor.
+            try { if (CodeMirror.findMatchingTag) editor.setOption("matchTags", { bothTags: true }); } catch (e) {}
+            try { editor.setOption("autoCloseTags", true); } catch (e) {}
+
             // Save typed code into state on change
-            state.codingEditor.on("change", (cm, change) => {
-                const idx = state.codingIndex;
-                const code = state.codingEditor.getValue();
-                state.codingAnswers[idx].code = code;
-                state.codingAnswers[idx].attempted =
-                    code.trim() !== (CODING_QUESTIONS[idx].starter || "").trim() && code.trim() !== "";
-                updateCodingPalette();
-            });
+            editor.on("change", () => onCodingCodeChanged());
 
             // Auto-trigger hint dropdown on alphabetic input (VS Code-like)
-            state.codingEditor.on("inputRead", (cm, change) => {
+            editor.on("inputRead", (cm, change) => {
                 if (change.origin !== "+input") return;
                 const ch = change.text[0];
                 if (!ch || !/^[a-zA-Z]$/.test(ch)) return;
-                // Don't trigger inside strings/comments — let user type freely
-                cm.showHint({ completeSingle: false });
+                try { cm.showHint({ completeSingle: false, closeOnUnfocus: true }); } catch (e) {}
             });
-        }
 
-        buildCodingPalette();
-        renderCodingQuestion();
-        bindCodingEvents();
+            return editor;
+        } catch (err) {
+            console.error("CodeMirror init failed — using fallback editor:", err);
+            return createFallbackEditor(ta);
+        }
+    }
+
+    // Plain <textarea> dressed to look like the dark editor, exposing the
+    // CodeMirror methods our code calls (getValue/setValue/setOption/refresh/on).
+    function createFallbackEditor(ta) {
+        ta.style.display    = "block";
+        ta.style.width      = "100%";
+        ta.style.minHeight  = "340px";
+        ta.style.boxSizing  = "border-box";
+        ta.style.fontFamily = "'Fira Code','Consolas','Courier New',monospace";
+        ta.style.fontSize   = "14px";
+        ta.style.lineHeight = "1.5";
+        ta.style.background = "#212121";
+        ta.style.color      = "#eeffff";
+        ta.style.border     = "none";
+        ta.style.outline    = "none";
+        ta.style.padding    = "12px";
+        ta.style.whiteSpace = "pre";
+        ta.style.tabSize    = "4";
+        ta.spellcheck       = false;
+
+        const handlers = {};
+        const api = {
+            _fallback: true,
+            getValue() { return ta.value; },
+            setValue(v) { ta.value = (v == null ? "" : v); },
+            getOption() { return undefined; },
+            setOption() {},
+            refresh() {},
+            focus() { try { ta.focus(); } catch (e) {} },
+            somethingSelected() { return ta.selectionStart !== ta.selectionEnd; },
+            on(evt, fn) { (handlers[evt] = handlers[evt] || []).push(fn); },
+            _emit(evt) { (handlers[evt] || []).forEach(fn => { try { fn(api); } catch (e) {} }); }
+        };
+
+        ta.addEventListener("input", () => api._emit("change"));
+        ta.addEventListener("keydown", (e) => {
+            if (e.key !== "Tab") return;          // Tab inserts 4 spaces
+            e.preventDefault();
+            const s = ta.selectionStart, en = ta.selectionEnd;
+            ta.value = ta.value.slice(0, s) + "    " + ta.value.slice(en);
+            ta.selectionStart = ta.selectionEnd = s + 4;
+            api._emit("change");
+        });
+
+        return api;
+    }
+
+    // Shared change handler — saves code + flags attempted, for both editors.
+    function onCodingCodeChanged() {
+        if (!state.codingEditor) return;
+        const idx = state.codingIndex;
+        const code = state.codingEditor.getValue();
+        state.codingAnswers[idx].code = code;
+        const starter = (CODING_QUESTIONS[idx].starter || "").trim();
+        state.codingAnswers[idx].attempted = code.trim() !== "" && code.trim() !== starter;
+        updateCodingPalette();
     }
 
     function buildCodingPalette() {
@@ -1048,18 +1120,19 @@
 
         $("#editorLangLabel").textContent = q.language;
 
-        // Set language mode
-        const modeMap = {
-            "htmlmixed":  "htmlmixed",
-            "javascript": "javascript",
-            "css":        "css",
-            "python":     "python"
-        };
-        state.codingEditor.setOption("mode", modeMap[q.language] || "python");
-
-        // Load this question's saved code
-        state.codingEditor.setValue(state.codingAnswers[i].code || q.starter || "");
-        state.codingEditor.refresh();
+        // Set language mode + load this question's saved code (editor may be
+        // a CodeMirror instance, a fallback textarea, or null — guard it).
+        if (state.codingEditor) {
+            const modeMap = {
+                "htmlmixed":  "htmlmixed",
+                "javascript": "javascript",
+                "css":        "css",
+                "python":     "python"
+            };
+            try { state.codingEditor.setOption("mode", modeMap[q.language] || "python"); } catch (e) {}
+            state.codingEditor.setValue(state.codingAnswers[i].code || q.starter || "");
+            try { state.codingEditor.refresh(); } catch (e) {}
+        }
 
         // Buttons
         $("#codingPrevBtn").disabled = i === 0;
@@ -1339,17 +1412,36 @@
             item.appendChild(head);
 
             if (a.attempted) {
-                const ta = document.createElement("textarea");
-                item.appendChild(ta);
-                list.appendChild(item);
-                CodeMirror.fromTextArea(ta, {
-                    value: a.code,
-                    lineNumbers: true,
-                    mode: a.language,
-                    theme: "material-darker",
-                    readOnly: true,
-                    lineWrapping: true
-                }).setValue(a.code);
+                let rendered = false;
+                try {
+                    if (typeof CodeMirror !== "undefined") {
+                        const ta = document.createElement("textarea");
+                        item.appendChild(ta);
+                        list.appendChild(item);
+                        const cm = CodeMirror.fromTextArea(ta, {
+                            lineNumbers: true,
+                            mode: a.language,
+                            theme: "material-darker",
+                            readOnly: true,
+                            lineWrapping: true
+                        });
+                        cm.setValue(a.code || "");
+                        cm.refresh();
+                        rendered = true;
+                    }
+                } catch (e) {
+                    console.error("Review editor failed, using <pre> fallback:", e);
+                }
+                if (!rendered) {
+                    const pre = document.createElement("pre");
+                    pre.className = "text-output";
+                    pre.style.cssText =
+                        "background:#212121;color:#eeffff;padding:12px;border-radius:6px;" +
+                        "overflow:auto;font-family:'Fira Code','Consolas',monospace;font-size:13px;";
+                    pre.textContent = a.code || "";
+                    item.appendChild(pre);
+                    list.appendChild(item);
+                }
             } else {
                 const empty = document.createElement("div");
                 empty.className = "empty-code";
