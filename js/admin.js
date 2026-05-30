@@ -662,16 +662,46 @@
         return window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
     }
 
+    // Reject after `ms` so a paused/unreachable database surfaces a clear
+    // message instead of an endless "Loading…" spinner.
+    function withTimeout(promise, ms, label) {
+        let t;
+        const timeout = new Promise((_, reject) => {
+            t = setTimeout(() => reject(new Error(
+                "DB_TIMEOUT::" + (label || "request"))), ms || 15000);
+        });
+        return Promise.race([promise, timeout]).finally(() => clearTimeout(t));
+    }
+
+    // Surface the real reason instead of an endless "Loading…" spinner.
+    function dbErrorHtml(err, colspan) {
+        const msg = String(err && err.message || err);
+        const unreachable = msg.indexOf("DB_TIMEOUT") === 0
+            || /timeout|failed to fetch|networkerror|load failed|503/i.test(msg);
+        const body = unreachable
+            ? '⚠ Could not reach the database (request timed out after 15s).<br>' +
+              'Likely one of: your network/firewall is blocking the Supabase API domain, ' +
+              'the project is paused, or the API key changed.<br>' +
+              'Check that the project is running on supabase.com and that this network can ' +
+              'open <code>' + (typeof SUPABASE_CONFIG !== "undefined" ? SUPABASE_CONFIG.url : "") +
+              '</code>, then press Refresh.'
+            : 'Error loading: ' + msg;
+        const style = 'color:var(--danger);line-height:1.6;padding:14px;';
+        return colspan
+            ? '<tr><td colspan="' + colspan + '" class="empty" style="' + style + '">' + body + '</td></tr>'
+            : '<p class="empty" style="' + style + '">' + body + '</p>';
+    }
+
     async function loadResults() {
         const tbody = $("#tableBody");
         tbody.innerHTML = '<tr><td colspan="11" class="empty">Loading…</td></tr>';
 
         try {
             const sb = getSupabaseClient();
-            const { data, error } = await sb
+            const { data, error } = await withTimeout(sb
                 .from(SUPABASE_CONFIG.tableName || "test_submissions")
                 .select("*")
-                .order("submitted_at", { ascending: false });
+                .order("submitted_at", { ascending: false }), 15000, "results");
 
             if (error) throw error;
 
@@ -680,10 +710,7 @@
             renderStats();
         } catch (err) {
             console.error(err);
-            tbody.innerHTML =
-                '<tr><td colspan="11" class="empty" style="color:var(--danger);">' +
-                'Error loading results: ' + (err.message || err) +
-                '</td></tr>';
+            tbody.innerHTML = dbErrorHtml(err, 11);
         }
 
         // Also load coding submissions in parallel
@@ -696,10 +723,10 @@
 
         try {
             const sb = getSupabaseClient();
-            const { data, error } = await sb
+            const { data, error } = await withTimeout(sb
                 .from("coding_submissions")
                 .select("*")
-                .order("submitted_at", { ascending: false });
+                .order("submitted_at", { ascending: false }), 15000, "coding");
 
             if (error) throw error;
 
@@ -708,9 +735,7 @@
             renderCodingStats();
         } catch (err) {
             console.error(err);
-            list.innerHTML =
-                '<p class="empty" style="color:var(--danger);">' +
-                'Error loading coding submissions: ' + (err.message || err) + '</p>';
+            list.innerHTML = dbErrorHtml(err, 0);
         }
     }
 
