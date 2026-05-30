@@ -200,7 +200,7 @@
 
         tbody.querySelectorAll("button[data-qact]").forEach(b => {
             b.addEventListener("click", () => {
-                const id  = Number(b.dataset.id);
+                const id  = b.dataset.id;   // Firestore ids are strings — do NOT Number()
                 const act = b.dataset.qact;
                 if (act === "edit")   openQuestionForm(id);
                 if (act === "delete") deleteQuestion(id);
@@ -436,7 +436,7 @@
 
         tbody.querySelectorAll("button[data-act]").forEach(b => {
             b.addEventListener("click", () => {
-                const id = Number(b.dataset.id);
+                const id = b.dataset.id;   // Firestore ids are strings — do NOT Number()
                 const act = b.dataset.act;
                 if (act === "edit")     editPlan(id);
                 if (act === "activate") activatePlan(id);
@@ -1005,7 +1005,7 @@
         tbody.querySelectorAll("button[data-act='del']").forEach(b => {
             b.addEventListener("click", (e) => {
                 e.stopPropagation();
-                deleteResult(Number(b.dataset.id));
+                deleteResult(b.dataset.id);   // Firestore ids are strings — do NOT Number()
             });
         });
     }
@@ -1042,7 +1042,7 @@
                 .select();
             if (error) throw error;
             if (!data || !data.length) {
-                throw new Error("0 rows deleted. RLS DELETE policy may be missing — re-run supabase_schema.sql.");
+                throw new Error("0 rows deleted — could not find that submission (try Refresh).");
             }
             // Remove from local arrays
             allRows = allRows.filter(r => r.id !== id);

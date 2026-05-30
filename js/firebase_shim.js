@@ -56,10 +56,11 @@
         return d;
     }
 
-    // Normalise a row before writing (case-insensitive emp lookups)
+    // Normalise a row before writing: JSON round-trip drops `undefined`
+    // (Firestore rejects it) and adds a lowercase emp key for case-
+    // insensitive duplicate / login lookups.
     function normalizeWrite(obj) {
-        var o = {};
-        for (var k in obj) if (Object.prototype.hasOwnProperty.call(obj, k)) o[k] = obj[k];
+        var o = JSON.parse(JSON.stringify(obj == null ? {} : obj));
         if (o.emp_code != null) o.emp_code_key = String(o.emp_code).trim().toLowerCase();
         return o;
     }
