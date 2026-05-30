@@ -1,0 +1,10 @@
+{
+  "_comment": "Realtime Database security rules for the Toyota Boshoku training portal. Posture matches the old Supabase setup: open anonymous access scoped to these four nodes; everything else denied. Apply: Firebase console -> Realtime Database -> Rules -> paste -> Publish.",
+  "rules": {
+    "test_submissions":   { ".read": true, ".write": true },
+    "coding_submissions": { ".read": true, ".write": true },
+    "test_plans":         { ".read": true, ".write": true },
+    "questions":          { ".read": true, ".write": true },
+    "$other":             { ".read": false, ".write": false }
+  }
+}
