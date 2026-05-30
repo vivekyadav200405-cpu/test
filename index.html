@@ -369,7 +369,9 @@
 <!-- ================================================================
      SCRIPTS
      ================================================================ -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- Google Firebase (Cloud Firestore) — replaces Supabase -->
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
 
 <!-- CodeMirror core + language modes (VS Code-like editor) -->
 <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.js"></script>
@@ -394,6 +396,7 @@
 <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/hint/anyword-hint.min.js"></script>
 
 <script src="js/config.js?v=20260530c"></script>
+<script src="js/firebase_shim.js?v=20260530c"></script>
 <script src="js/question_pool.js?v=20260530c"></script>
 <script src="js/question_pool_extra.js?v=20260530c"></script>
 <script src="js/questions.js?v=20260530c"></script>
