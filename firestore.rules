@@ -1,0 +1,54 @@
+rules_version = '2';
+
+// ============================================================
+//  Cloud Firestore security rules for the Toyota Boshoku
+//  training-assessment portal.
+//
+//  Posture matches the previous Supabase setup (open anon access
+//  scoped to these collections). The admin page has no Firebase
+//  login, so admin actions (manage plans/questions, delete
+//  submissions) must be allowed without auth — same as before.
+//
+//  Submissions are made create-only (cannot be edited after
+//  submit) which is a small hardening over the old setup.
+//
+//  HOW TO APPLY: Firebase console → Firestore Database → Rules →
+//  paste this whole file → Publish.
+// ============================================================
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Candidate MCQ results
+    match /test_submissions/{id} {
+      allow read:   if true;     // admin dashboard + candidate review
+      allow create: if true;     // candidate submits a test
+      allow update: if false;    // results are immutable once saved
+      allow delete: if true;     // admin deletes to allow a re-attempt
+    }
+
+    // Candidate coding submissions
+    match /coding_submissions/{id} {
+      allow read:   if true;
+      allow create: if true;
+      allow update: if false;
+      allow delete: if true;
+    }
+
+    // Test plans (admin creates / edits / activates / deletes)
+    match /test_plans/{id} {
+      allow read:  if true;      // every candidate loads the active plan
+      allow write: if true;      // admin manages plans (no admin login)
+    }
+
+    // Admin-managed extra questions
+    match /questions/{id} {
+      allow read:  if true;      // merged into the question pool
+      allow write: if true;      // admin add / edit / delete
+    }
+
+    // Everything else is denied.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

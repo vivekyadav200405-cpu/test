@@ -1,10 +1,6 @@
 /* ============================================================
-   firebase_shim.js  —  Supabase-compatible layer over
-                        Firebase REALTIME DATABASE
+   firebase_shim.js  —  Supabase-compatible layer over Firestore
    ------------------------------------------------------------
-   (Realtime Database is used instead of Firestore because new
-    free projects can create it WITHOUT enabling billing.)
-
    Lets the existing code keep calling:
 
        const sb = window.supabase.createClient(url, key);
@@ -14,20 +10,24 @@
        await sb.from("table").delete().eq("id", id).select();
        await sb.rpc("has_taken_test", { emp });
 
-   Each "table" is a top-level node in the Realtime Database.
-   SELECTs read the whole node and filter/sort in JavaScript.
+   …but stores everything in Google Firebase (Cloud Firestore),
+   which never pauses and is reachable on Google domains.
+
+   SELECT queries fetch the whole collection and filter/sort in
+   JavaScript — this avoids Firestore composite-index setup and
+   is fine for a training portal's data volume.
    ============================================================ */
 (function () {
     "use strict";
 
-    var db = null;            // Realtime Database instance (null = not configured)
+    var fs = null;            // Firestore instance (null = not configured)
     var initError = null;
 
     function configured() {
         return (typeof FIREBASE_CONFIG !== "undefined")
             && FIREBASE_CONFIG
-            && FIREBASE_CONFIG.databaseURL
-            && String(FIREBASE_CONFIG.databaseURL).indexOf("REPLACE") !== 0
+            && FIREBASE_CONFIG.projectId
+            && String(FIREBASE_CONFIG.projectId).indexOf("REPLACE") !== 0
             && String(FIREBASE_CONFIG.apiKey || "").indexOf("REPLACE") !== 0;
     }
 
@@ -35,10 +35,12 @@
         if (typeof firebase === "undefined") {
             initError = "Firebase SDK did not load (check internet).";
         } else if (!configured()) {
-            initError = "FIREBASE_CONFIG (with databaseURL) is not set in js/config.js.";
+            initError = "FIREBASE_CONFIG is not set in js/config.js.";
         } else {
-            if (!firebase.apps || !firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
-            db = firebase.database();
+            if (!firebase.apps || !firebase.apps.length) {
+                firebase.initializeApp(FIREBASE_CONFIG);
+            }
+            fs = firebase.firestore();
         }
     } catch (e) {
         initError = (e && e.message) || String(e);
@@ -47,26 +49,17 @@
 
     function err(msg) { return { message: msg || initError || "Firebase not ready" }; }
 
-    // Read a whole node → array of rows, each with id = child key.
-    function getAll(table) {
-        return db.ref(table).once("value").then(function (snap) {
-            var rows = [];
-            snap.forEach(function (child) {
-                var v = child.val();
-                var row = (v && typeof v === "object") ? v : { value: v };
-                var copy = {};
-                for (var k in row) if (Object.prototype.hasOwnProperty.call(row, k)) copy[k] = row[k];
-                copy.id = child.key;
-                rows.push(copy);
-                return false; // don't cancel iteration
-            });
-            return rows;
-        });
+    // Attach the Firestore doc id as `id` (matches Supabase row.id usage)
+    function rowOf(doc) {
+        var d = doc.data() || {};
+        d.id = doc.id;
+        return d;
     }
 
-    // Sanitise a write: drop undefined (RTDB rejects it) + add emp_code_key.
+    // Normalise a row before writing (case-insensitive emp lookups)
     function normalizeWrite(obj) {
-        var o = JSON.parse(JSON.stringify(obj == null ? {} : obj));
+        var o = {};
+        for (var k in obj) if (Object.prototype.hasOwnProperty.call(obj, k)) o[k] = obj[k];
         if (o.emp_code != null) o.emp_code_key = String(o.emp_code).trim().toLowerCase();
         return o;
     }
@@ -75,11 +68,11 @@
     function QB(table) {
         this.table = table;
         this._op = "select";
-        this._filters = [];
-        this._order = null;
+        this._filters = [];          // {type, col, val}
+        this._order = null;          // {col, asc}
         this._payload = null;
-        this._selectOpts = null;
-        this._wantRows = false;
+        this._selectOpts = null;     // {count, head}
+        this._wantRows = false;      // insert/update/delete .select()
         this._single = false;
         this._maybe = false;
     }
@@ -111,6 +104,7 @@
             return true;
         });
     };
+
     QB.prototype._sortRows = function (rows) {
         if (!this._order) return rows;
         var c = this._order.col, asc = this._order.asc;
@@ -125,13 +119,17 @@
 
     QB.prototype._run = function () {
         var self = this;
-        if (!db) return Promise.resolve({ data: null, error: err() });
+        if (!fs) return Promise.resolve({ data: null, error: err() });
+        var col = fs.collection(this.table);
 
         if (this._op === "select") {
-            return getAll(this.table).then(function (rows) {
+            return col.get().then(function (snap) {
+                var rows = [];
+                snap.forEach(function (d) { rows.push(rowOf(d)); });
                 rows = self._sortRows(rows.filter(function (r) { return self._match(r); }));
-                if (self._selectOpts && self._selectOpts.count)
+                if (self._selectOpts && self._selectOpts.count) {
                     return { data: self._selectOpts.head ? null : rows, count: rows.length, error: null };
+                }
                 if (self._single) {
                     var one = rows.length ? rows[0] : null;
                     return { data: one, error: (!one && !self._maybe) ? err("No rows") : null };
@@ -147,9 +145,10 @@
             items.forEach(function (it) {
                 chain = chain.then(function () {
                     var data = normalizeWrite(it);
-                    var ref = db.ref(self.table).push();
-                    var key = ref.key;
-                    return ref.set(data).then(function () { data.id = key; out.push(data); });
+                    return col.add(data).then(function (ref) {
+                        data.id = ref.id;
+                        out.push(data);
+                    });
                 });
             });
             return chain.then(function () {
@@ -159,56 +158,69 @@
         }
 
         if (this._op === "update" || this._op === "delete") {
-            return getAll(this.table).then(function (rows) {
+            return col.get().then(function (snap) {
+                var rows = [];
+                snap.forEach(function (d) { rows.push(rowOf(d)); });
                 rows = rows.filter(function (r) { return self._match(r); });
                 var affected = [];
                 var chain = Promise.resolve();
                 rows.forEach(function (r) {
                     chain = chain.then(function () {
                         if (self._op === "update") {
-                            return db.ref(self.table + "/" + r.id).update(self._payload).then(function () {
+                            return col.doc(r.id).update(self._payload).then(function () {
                                 affected.push(Object.assign({}, r, self._payload));
                             });
                         }
-                        return db.ref(self.table + "/" + r.id).remove().then(function () { affected.push(r); });
+                        return col.doc(r.id).delete().then(function () { affected.push(r); });
                     });
                 });
-                return chain.then(function () { return { data: self._wantRows ? affected : null, error: null }; });
+                return chain.then(function () {
+                    return { data: self._wantRows ? affected : null, error: null };
+                });
             }).catch(function (e) { return { data: null, error: err(e.message || String(e)) }; });
         }
 
         return Promise.resolve({ data: null, error: err("Unknown op") });
     };
 
-    QB.prototype.then  = function (resolve, reject) { return this._run().then(resolve, reject); };
+    // Thenable so `await qb` and `qb.then(...)` work like supabase-js
+    QB.prototype.then = function (resolve, reject) { return this._run().then(resolve, reject); };
     QB.prototype.catch = function (reject) { return this._run().catch(reject); };
 
     // ---------- RPC equivalents ----------
     function activePlanId() {
-        if (!db) return Promise.resolve(null);
-        return getAll("test_plans").then(function (rows) {
-            var hit = rows.filter(function (r) { return r.is_active === true; })[0];
-            return hit ? hit.id : null;
+        if (!fs) return Promise.resolve(null);
+        return fs.collection("test_plans").get().then(function (snap) {
+            var id = null;
+            snap.forEach(function (d) { if ((d.data() || {}).is_active === true) id = d.id; });
+            return id;
         });
     }
+
+    // True if a submission exists for (field == val) within the ACTIVE plan.
     function hasTaken(field, val) {
         if (val == null || val === "") return Promise.resolve(false);
         return activePlanId().then(function (pid) {
-            if (!pid) return false;
-            return getAll("test_submissions").then(function (rows) {
-                return rows.some(function (r) {
-                    if (r.test_plan_id !== pid) return false;
-                    if (field === "emp_code")
-                        return String(r.emp_code == null ? "" : r.emp_code).toLowerCase() === String(val).toLowerCase();
-                    return r[field] === val;
+            if (!pid) return false;   // no active plan → behave like SQL (no match)
+            return fs.collection("test_submissions").get().then(function (snap) {
+                var found = false;
+                snap.forEach(function (d) {
+                    var r = d.data() || {};
+                    if (r.test_plan_id !== pid) return;
+                    var rv = field === "emp_code"
+                        ? String(r.emp_code == null ? "" : r.emp_code).toLowerCase()
+                        : r[field];
+                    var cmp = field === "emp_code" ? String(val).toLowerCase() : val;
+                    if (rv === cmp) found = true;
                 });
+                return found;
             });
         });
     }
 
     function rpc(name, args) {
         args = args || {};
-        if (!db) return Promise.resolve({ data: null, error: err() });
+        if (!fs) return Promise.resolve({ data: null, error: err() });
         try {
             if (name === "has_taken_test")
                 return hasTaken("emp_code", args.emp).then(function (v) { return { data: v, error: null }; });
@@ -218,18 +230,17 @@
                 return hasTaken("device_fingerprint", args.device_fp).then(function (v) { return { data: v, error: null }; });
 
             if (name === "activate_plan") {
-                return getAll("test_plans").then(function (rows) {
-                    var updates = {};
-                    rows.forEach(function (r) { updates[r.id + "/is_active"] = (r.id === args.plan_id); });
-                    return db.ref("test_plans").update(updates).then(function () { return { data: null, error: null }; });
+                return fs.collection("test_plans").get().then(function (snap) {
+                    var batch = fs.batch();
+                    snap.forEach(function (d) { batch.update(d.ref, { is_active: d.id === args.plan_id }); });
+                    return batch.commit().then(function () { return { data: null, error: null }; });
                 });
             }
             if (name === "get_active_plan") {
                 return activePlanId().then(function (pid) {
                     if (!pid) return { data: null, error: null };
-                    return db.ref("test_plans/" + pid).once("value").then(function (snap) {
-                        var v = snap.val() || {}; v.id = pid;
-                        return { data: v, error: null };
+                    return fs.collection("test_plans").doc(pid).get().then(function (doc) {
+                        return { data: rowOf(doc), error: null };
                     });
                 });
             }

@@ -1,85 +1,72 @@
 # Firebase setup (one-time, ~5 minutes)
 
-The portal stores everything in **Firebase Realtime Database** (free
-**Spark** plan — **no billing / no credit card needed**, and it never
-pauses). We use Realtime Database (not Firestore) because new free
-projects can't create Firestore without enabling billing.
+The portal now stores everything in **Google Firebase (Cloud Firestore)**
+instead of Supabase. Firebase never pauses and runs on Google domains
+that office networks usually allow.
 
-You only do this **once**. No tables/SQL — nodes are created on first save.
+You only need to do this **once**. No tables/SQL to create — Firestore
+makes the collections automatically on first save.
 
 ---
 
 ## 1. Create a Firebase project
-1. Go to **https://console.firebase.google.com**, sign in with Google.
-2. **Add project** → name `tbdi-test` (or anything) → Continue.
-3. Google Analytics: **turn off** → Create project → Continue.
+1. Go to **https://console.firebase.google.com** and sign in with your Google account.
+2. Click **Add project** → name it e.g. `toyota-boshoku-test` → Continue.
+3. Google Analytics: you can **turn it off** (not needed) → Create project → wait → Continue.
 
-## 2. Create the Realtime Database
-1. Left menu → **Build → Realtime Database**.  ⚠️ **NOT** "Firestore" and **NOT** "Data Connect".
-2. Click **Create Database**.
-3. Location: **Singapore (asia-southeast1)** → Next.
-4. Choose **Start in test mode** → **Enable**. (Creates instantly, no billing.)
-5. Note the database URL shown at the top, e.g.
-   `https://tbdi-test-default-rtdb.asia-southeast1.firebasedatabase.app`
+## 2. Create the database
+1. Left menu → **Build → Firestore Database**.
+2. Click **Create database**.
+3. Choose **Start in production mode** → Next.
+4. Location: pick **asia-south1 (Mumbai)** (closest) → **Enable**.
 
 ## 3. Paste the security rules
-1. In Realtime Database, open the **Rules** tab.
-2. Replace everything with the `rules` block from **`database.rules.json`**
-   (in this folder) — i.e. paste exactly:
-
-```json
-{
-  "rules": {
-    "test_submissions":   { ".read": true, ".write": true },
-    "coding_submissions": { ".read": true, ".write": true },
-    "test_plans":         { ".read": true, ".write": true },
-    "questions":          { ".read": true, ".write": true },
-    "$other":             { ".read": false, ".write": false }
-  }
-}
-```
+1. In Firestore Database, open the **Rules** tab.
+2. Delete what's there and paste the **entire contents of `firestore.rules`** (in this folder).
 3. Click **Publish**.
 
 ## 4. Register a Web App and copy the config
-1. **⚙ (gear) → Project settings**.
+1. Click the **gear icon (⚙) → Project settings**.
 2. Scroll to **Your apps** → click the **web icon `</>`**.
-3. Nickname `quiz-portal` → **Register app** (skip Hosting).
-4. Copy the `firebaseConfig` values — make sure it includes **`databaseURL`**.
+3. App nickname: `quiz-portal` → **Register app** (skip Hosting).
+4. Firebase shows a `const firebaseConfig = { ... }` block. Copy those 6 values.
 
 ## 5. Put the config into the portal
-Open **`js/config.js`** and fill `FIREBASE_CONFIG` (note `databaseURL`):
+Open **`js/config.js`** and fill in `FIREBASE_CONFIG` with your values:
 
 ```js
 const FIREBASE_CONFIG = {
     apiKey:            "AIza...your key...",
-    authDomain:        "tbdi-test.firebaseapp.com",
-    databaseURL:       "https://tbdi-test-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId:         "tbdi-test",
-    storageBucket:     "tbdi-test.appspot.com",
+    authDomain:        "toyota-boshoku-test.firebaseapp.com",
+    projectId:         "toyota-boshoku-test",
+    storageBucket:     "toyota-boshoku-test.appspot.com",
     messagingSenderId: "1234567890",
     appId:             "1:1234567890:web:abc123..."
 };
 ```
 
-> These web-config values are **safe to commit** — they're a public project
-> identifier. Real protection comes from the database rules above.
-> **Easiest:** just paste these 6–7 values in chat and I'll fill + push for you.
+> These web-config values are **safe to commit** — they're just a public
+> project identifier. Real protection comes from the Firestore Rules above
+> (just like Supabase's anon key + RLS).
 
 ## 6. Deploy
-Push to GitHub (`push.bat` or `git add . && git commit && git push`).
-GitHub Pages redeploys in ~1–2 min → **hard-refresh** (Ctrl+Shift+R).
+Push to GitHub (your usual `push.bat`, or `git add . && git commit && git push`).
+GitHub Pages redeploys in ~1–2 min. **Hard-refresh** the site (Ctrl+Shift+R).
 
 ## 7. First run
-1. **admin.html** → **Test Planner** → set counts/difficulty → **Save & Activate Plan**.
-2. Candidates open **index.html** and take the test.
-3. Results appear live in admin **MCQ Results** / **Coding Submissions**.
+1. Open **admin.html** → **Test Planner** → set counts/difficulty →
+   **Save & Activate Plan**. (This creates the first plan in Firestore.)
+2. Now candidates can open **index.html** and take the test.
+3. Results appear live in the admin **MCQ Results** / **Coding Submissions** tabs.
 
 ---
 
 ### Notes
-- **Old Supabase data does NOT carry over** — fresh database. Ask me if you
-  want the old 27 submissions imported.
-- **Free Spark limits:** 1 GB stored, 10 GB/month download, 100 simultaneous
-  connections — plenty for training batches, and it **never pauses**.
-- Timer, duplicate-block (emp/IP/device), anti-cheat, candidate review, and
-  the admin dashboard all work exactly as before — only storage changed.
+- **Old Supabase data (the 27 submissions) does NOT carry over** — this is a
+  fresh database. If you need them, you can export from Supabase later and
+  we can import; tell me and I'll add an importer.
+- **Free tier limits** (Firebase Spark): 50k reads + 20k writes **per day**,
+  1 GiB stored. For a training batch this is plenty and it **does not pause**.
+- Duplicate-prevention (same emp code / IP / device can't retake the active
+  plan), the timer, anti-cheat, candidate review, and the admin dashboard all
+  work exactly as before — only the storage backend changed.

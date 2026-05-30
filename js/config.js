@@ -14,12 +14,9 @@
    ============================================================ */
 
 // ----- Google Firebase project (paste from Firebase console) -----
-// Uses Firebase REALTIME DATABASE (free Spark plan, no billing needed).
-// databaseURL is REQUIRED — copy it from Realtime Database page / web config.
 const FIREBASE_CONFIG = {
     apiKey:            "REPLACE_WITH_FIREBASE_API_KEY",
     authDomain:        "REPLACE_WITH_PROJECT.firebaseapp.com",
-    databaseURL:       "REPLACE_WITH_https://PROJECT-default-rtdb.firebasedatabase.app",
     projectId:         "REPLACE_WITH_PROJECT_ID",
     storageBucket:     "REPLACE_WITH_PROJECT.appspot.com",
     messagingSenderId: "REPLACE_WITH_SENDER_ID",
