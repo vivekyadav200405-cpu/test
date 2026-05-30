@@ -15,12 +15,12 @@
 
 // ----- Google Firebase project (paste from Firebase console) -----
 const FIREBASE_CONFIG = {
-    apiKey:            "REPLACE_WITH_FIREBASE_API_KEY",
-    authDomain:        "REPLACE_WITH_PROJECT.firebaseapp.com",
-    projectId:         "REPLACE_WITH_PROJECT_ID",
-    storageBucket:     "REPLACE_WITH_PROJECT.appspot.com",
-    messagingSenderId: "REPLACE_WITH_SENDER_ID",
-    appId:             "REPLACE_WITH_APP_ID"
+    apiKey:            "AIzaSyBYbVJnJy52fGx4mLhKGBRUMdEIJg_k50w",
+    authDomain:        "tbdi-test-bd057.firebaseapp.com",
+    projectId:         "tbdi-test-bd057",
+    storageBucket:     "tbdi-test-bd057.firebasestorage.app",
+    messagingSenderId: "549453257336",
+    appId:             "1:549453257336:web:15368fe83ffaea115e2b8d"
 };
 
 const SUPABASE_CONFIG = {
