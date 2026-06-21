@@ -46,6 +46,11 @@ service cloud.firestore {
       allow write: if true;      // admin add / edit / delete
     }
 
+    // DX Inventory web app (materials, indents, receipts, dept pickups, usages)
+    match /dx_inventory/{document=**} {
+      allow read, write: if true;
+    }
+
     // Everything else is denied.
     match /{document=**} {
       allow read, write: if false;

@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>DX Inventory — TBDI</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  :root{--navy:#0c2340;--blue:#185fa5;--green:#1d9e75;--amber:#ef9f27;--red:#d85a30;--bg:#f4f6f8;}
+  *{box-sizing:border-box} body{margin:0;font-family:Segoe UI,Arial,sans-serif;background:var(--bg);color:#1f2937}
+  .top{background:var(--navy);color:#fff;padding:12px 22px;display:flex;align-items:center;gap:14px}
+  .top h1{font-size:18px;margin:0;font-weight:700} .top .sub{font-size:12px;color:#9fb3cc}
+  .tabs{display:flex;gap:4px;background:#fff;padding:0 18px;border-bottom:1px solid #e5e7eb;position:sticky;top:0;z-index:5}
+  .tabs button{border:0;background:none;padding:13px 16px;font-size:14px;cursor:pointer;color:#555;border-bottom:3px solid transparent}
+  .tabs button.on{color:var(--blue);border-bottom-color:var(--blue);font-weight:600}
+  .wrap{padding:18px 22px;max-width:1400px;margin:auto}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+  .card{background:#fff;border-radius:12px;padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .card .l{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#6b7280} .card .v{font-size:23px;font-weight:700;margin-top:3px}
+  .bar{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+  input,select{padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px}
+  .btn{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:9px 16px;font-size:13px;cursor:pointer;font-weight:600}
+  .btn:disabled{opacity:.5}
+  table{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;font-size:13px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  th{background:#1f4e78;color:#fff;padding:9px 8px;text-align:left;position:sticky;top:46px}
+  td{padding:7px 8px;border-top:1px solid #eef1f5} tr:nth-child(even) td{background:#fafbfc}
+  .num{text-align:right;font-variant-numeric:tabular-nums}
+  .pill{padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap}
+  .RECEIVED{background:#d6f5e6;color:#0f6e56} .PARTIAL{background:#fdeccb;color:#9c6500} .PENDING{background:#fbe0d6;color:#9c2d0c}
+  .Consumable{background:#e2efda;color:#375623} .Non-Consumable{background:#ddebf7;color:#1f4e78}
+  .form{background:#fff;border-radius:12px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,.08);max-width:560px}
+  .form .row{display:flex;flex-direction:column;gap:4px;margin-bottom:12px} .form label{font-size:12px;color:#555;font-weight:600}
+  .msg{padding:8px 12px;border-radius:8px;margin-bottom:10px;font-size:13px}
+  .ok{background:#d6f5e6;color:#0f6e56} .err{background:#fbe0d6;color:#9c2d0c}
+  .muted{color:#9ca3af;font-size:12px}
+  .lnk{background:none;border:1px solid #d0d7de;border-radius:6px;cursor:pointer;font-size:13px;padding:3px 8px;margin:0 2px}
+  .lnk:hover{background:#eef1f5} .lnk.del:hover{background:#fbe0d6;border-color:#d85a30}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+  // ===== Firebase (TBDI project - web config is public-safe; Firestore Rules protect) =====
+  var firebaseConfig = {
+    apiKey: "AIzaSyBYbVJnJy52fGx4mLhKGBRUMdEIJg_k50w",
+    authDomain: "tbdi-test-bd057.firebaseapp.com",
+    projectId: "tbdi-test-bd057",
+    storageBucket: "tbdi-test-bd057.firebasestorage.app",
+    messagingSenderId: "549453257336",
+    appId: "1:549453257336:web:15368fe83ffaea115e2b8d"
+  };
+  firebase.initializeApp(firebaseConfig);
+  window.db = firebase.firestore();
+</script>
+<script type="text/babel-app" id="appsrc">
+const { useState, useEffect, useMemo } = React;
+const DB = window.db;
+const COLL = "dx_inventory";   // sub-collections live under this for isolation
+const sub = (name) => DB.collection(COLL).doc("data").collection(name);
+const n = (x) => { const v = parseFloat(x); return isNaN(v) ? 0 : v; };
+const fmt = (x) => Math.round(n(x)).toLocaleString("en-IN");
+
+function useColl(name){
+  const [rows,setRows]=useState([]);
+  useEffect(()=>{ return sub(name).onSnapshot(s=>setRows(s.docs.map(d=>({id:d.id,...d.data()})))); },[name]);
+  return rows;
+}
+
+function App(){
+  const [tab,setTab]=useState("dashboard");
+  const items=useColl("items"), indents=useColl("indents"), receipts=useColl("receipts"),
+        pickups=useColl("dept_pickups"), usages=useColl("usages");
+
+  // aggregate by code
+  const agg=useMemo(()=>{
+    const m={};
+    const get=(c)=> m[c] || (m[c]={code:c,name:"",subname:"",type:"",uom:"",indented:0,received:0,issued:0,used:0});
+    items.forEach(i=>{const g=get(i.code);g.name=i.name||g.name;g.subname=i.subname||"";g.type=i.type||"";g.uom=i.uom||"";});
+    indents.forEach(r=>{const g=get(r.code);g.indented+=n(r.qty);if(!g.name)g.name=r.name||"";});
+    receipts.forEach(r=>{const g=get(r.code);g.received+=n(r.qty);if(!g.name)g.name=r.name||"";});
+    pickups.forEach(r=>{const g=get(r.code);g.issued+=n(r.qty);});
+    usages.forEach(r=>{const g=get(r.code);g.used+=n(r.qty);});
+    return Object.values(m).map(g=>({...g,
+      store:g.received-g.issued, dept:g.issued-g.used, total:g.received-g.used,
+      pending:Math.max(g.indented-g.received,0),
+      status: g.received===0?"PENDING":(g.received<g.indented?"PARTIAL":"RECEIVED")
+    })).sort((a,b)=>a.code.localeCompare(b.code));
+  },[items,indents,receipts,pickups,usages]);
+
+  return <div>
+    <div className="top">
+      <h1>🧰 DX INVENTORY</h1>
+      <span className="sub">Toyota Boshoku — Digitalization store · live from Firebase</span>
+    </div>
+    <div className="tabs">
+      {[["dashboard","Dashboard"],["items","Materials"],["pickup","Dept Pickup"],["usage","Usage"]].map(([k,l])=>
+        <button key={k} className={tab===k?"on":""} onClick={()=>setTab(k)}>{l}</button>)}
+    </div>
+    <div className="wrap">
+      {tab==="dashboard" && <Dashboard agg={agg}/>}
+      {tab==="items" && <ItemsTab items={items}/>}
+      {tab==="pickup" && <EntryTab kind="dept_pickups" items={agg} fields={[["dept","Department"],["remarks","Remarks"]]} qtyLabel="Picked Qty"/>}
+      {tab==="usage" && <EntryTab kind="usages" items={agg} fields={[["location","Location / Where used"],["remarks","Remarks"]]} qtyLabel="Used Qty"/>}
+    </div>
+  </div>;
+}
+
+function Dashboard({agg}){
+  const [type,setType]=useState("All"), [q,setQ]=useState("");
+  const rows=agg.filter(r=>(type==="All"||r.type===type)&&(!q||((r.code+" "+r.name+" "+r.subname).toLowerCase().includes(q.toLowerCase()))));
+  const cons=agg.filter(r=>r.type==="Consumable"), non=agg.filter(r=>r.type==="Non-Consumable");
+  const totStock=agg.reduce((s,r)=>s+r.total,0), pend=agg.filter(r=>r.pending>0).length;
+  return <div>
+    <div className="cards">
+      <div className="card"><div className="l">Materials</div><div className="v">{agg.length}</div></div>
+      <div className="card"><div className="l">Consumable</div><div className="v" style={{color:"#375623"}}>{cons.length}</div></div>
+      <div className="card"><div className="l">Non-Consumable</div><div className="v" style={{color:"#1f4e78"}}>{non.length}</div></div>
+      <div className="card"><div className="l">Total Stock (nos)</div><div className="v">{fmt(totStock)}</div></div>
+      <div className="card"><div className="l">Pending to receive</div><div className="v" style={{color:"#d85a30"}}>{pend}</div></div>
+    </div>
+    <div className="bar">
+      <select value={type} onChange={e=>setType(e.target.value)}>
+        <option>All</option><option>Consumable</option><option>Non-Consumable</option>
+      </select>
+      <input placeholder="Search code / name…" value={q} onChange={e=>setQ(e.target.value)} style={{flex:1,minWidth:180}}/>
+      <span className="muted">{rows.length} items</span>
+    </div>
+    <div style={{overflow:"auto"}}>
+    <table><thead><tr>
+      <th>Code</th><th>Name</th><th>Sub</th><th>Type</th>
+      <th className="num">Indent</th><th className="num">Received</th><th className="num">To Dept</th><th className="num">Used</th>
+      <th className="num">Store</th><th className="num">Dept</th><th className="num">Stock</th><th className="num">Pending</th><th>Status</th>
+    </tr></thead><tbody>
+      {rows.map(r=><tr key={r.code}>
+        <td>{r.code}</td><td>{r.name}</td><td>{r.subname}</td>
+        <td>{r.type&&<span className={"pill "+r.type}>{r.type}</span>}</td>
+        <td className="num">{fmt(r.indented)}</td><td className="num">{fmt(r.received)}</td>
+        <td className="num">{fmt(r.issued)}</td><td className="num">{fmt(r.used)}</td>
+        <td className="num">{fmt(r.store)}</td><td className="num">{fmt(r.dept)}</td>
+        <td className="num"><b>{fmt(r.total)}</b></td><td className="num">{fmt(r.pending)}</td>
+        <td><span className={"pill "+r.status}>{r.status}</span></td>
+      </tr>)}
+      {!rows.length&&<tr><td colSpan="13" className="muted">No data. Run the ERP sync (sync_to_firebase.py) and add materials.</td></tr>}
+    </tbody></table>
+    </div>
+  </div>;
+}
+
+function ItemsTab({items}){
+  const [f,setF]=useState({code:"",name:"",subname:"",type:"Consumable",uom:"NOS"});
+  const [m,setM]=useState(null);
+  const save=async()=>{
+    if(!f.code||!f.name){setM(["err","Code aur Name zaroori hai"]);return;}
+    try{ await sub("items").doc(f.code.trim().toUpperCase()).set(f,{merge:true});
+      setM(["ok","Saved: "+f.code]); setF({code:"",name:"",subname:"",type:"Consumable",uom:"NOS"});
+    }catch(e){setM(["err",e.message]);}
+  };
+  return <div style={{display:"flex",gap:24,flexWrap:"wrap"}}>
+    <div className="form">
+      <h3 style={{marginTop:0}}>Add / Edit Material</h3>
+      {m&&<div className={"msg "+m[0]}>{m[1]}</div>}
+      <div className="row"><label>Item Code</label><input value={f.code} onChange={e=>setF({...f,code:e.target.value})}/></div>
+      <div className="row"><label>Name</label><input value={f.name} onChange={e=>setF({...f,name:e.target.value})}/></div>
+      <div className="row"><label>Sub Name (short)</label><input value={f.subname} onChange={e=>setF({...f,subname:e.target.value})}/></div>
+      <div className="row"><label>Type</label><select value={f.type} onChange={e=>setF({...f,type:e.target.value})}><option>Consumable</option><option>Non-Consumable</option></select></div>
+      <div className="row"><label>Unit</label><input value={f.uom} onChange={e=>setF({...f,uom:e.target.value})}/></div>
+      <button className="btn" onClick={save}>Save Material</button>
+    </div>
+    <div style={{flex:1,minWidth:320}}>
+      <h3>Materials ({items.length})</h3>
+      <div style={{overflow:"auto",maxHeight:"68vh"}}>
+      <table><thead><tr><th>Code</th><th>Name</th><th>Sub</th><th>Type</th><th>Unit</th><th>Action</th></tr></thead><tbody>
+        {items.slice().sort((a,b)=>(a.code||"").localeCompare(b.code||"")).map(i=><tr key={i.id}>
+          <td>{i.code||i.id}</td><td>{i.name}</td><td>{i.subname}</td><td>{i.type&&<span className={"pill "+i.type}>{i.type}</span>}</td><td>{i.uom}</td>
+          <td style={{whiteSpace:"nowrap"}}>
+            <button className="lnk" onClick={()=>{setF({code:i.code||i.id,name:i.name||"",subname:i.subname||"",type:i.type||"Consumable",uom:i.uom||"NOS"});setM(null);}}>Edit</button>
+            <button className="lnk del" onClick={async()=>{if(window.confirm("Delete material "+(i.code||i.id)+" ?")){try{await sub("items").doc(i.id).delete();}catch(e){alert(e.message);}}}}>Delete</button>
+          </td></tr>)}
+      </tbody></table></div>
+    </div>
+  </div>;
+}
+
+function EntryTab({kind,items,fields,qtyLabel}){
+  const entries=useColl(kind);
+  const today=new Date().toISOString().slice(0,10);
+  const blank={date:today,code:"",qty:""};
+  const [f,setF]=useState(blank);
+  const [editId,setEditId]=useState(null);
+  const [m,setM]=useState(null);
+  const save=async()=>{
+    if(!f.code||!f.qty){setM(["err","Material aur Qty zaroori hai"]);return;}
+    const it=items.find(x=>x.code===f.code)||{};
+    const data={...f,qty:n(f.qty),name:it.name||""};
+    try{
+      if(editId){ await sub(kind).doc(editId).set(data,{merge:true}); setM(["ok","Updated ✓"]); }
+      else { await sub(kind).add({...data,created:Date.now()}); setM(["ok","Saved ✓"]); }
+      setF(blank); setEditId(null);
+    }catch(e){setM(["err",e.message]);}
+  };
+  const edit=(e)=>{ const o={date:e.date||today,code:e.code||"",qty:e.qty||""}; fields.forEach(([k])=>o[k]=e[k]||""); setF(o); setEditId(e.id); setM(null); };
+  const del=async(e)=>{ if(!window.confirm("Delete: "+e.code+" qty "+e.qty+" ?"))return; try{await sub(kind).doc(e.id).delete();}catch(err){alert(err.message);} };
+  return <div style={{display:"flex",gap:24,flexWrap:"wrap"}}>
+    <div className="form" style={{minWidth:300}}>
+      <h3 style={{marginTop:0}}>{editId?"✏️ Edit entry":(kind==="dept_pickups"?"Dept Pickup — naya":"Usage — naya")}</h3>
+      {m&&<div className={"msg "+m[0]}>{m[1]}</div>}
+      <div className="row"><label>Date</label><input type="date" value={f.date} onChange={e=>setF({...f,date:e.target.value})}/></div>
+      <div className="row"><label>Material</label>
+        <select value={f.code} onChange={e=>setF({...f,code:e.target.value})}>
+          <option value="">-- chuno --</option>
+          {items.slice().sort((a,b)=>(a.name||"").localeCompare(b.name||"")).map(i=><option key={i.code} value={i.code}>{i.code} — {i.name}</option>)}
+        </select></div>
+      <div className="row"><label>{qtyLabel}</label><input type="number" value={f.qty} onChange={e=>setF({...f,qty:e.target.value})}/></div>
+      {fields.map(([k,l])=><div className="row" key={k}><label>{l}</label><input value={f[k]||""} onChange={e=>setF({...f,[k]:e.target.value})}/></div>)}
+      <div>
+        <button className="btn" onClick={save}>{editId?"Update":"Save"} Entry</button>
+        {editId&&<button className="lnk" style={{marginLeft:8,padding:"9px 14px"}} onClick={()=>{setF(blank);setEditId(null);}}>Cancel</button>}
+      </div>
+    </div>
+    <div style={{flex:1,minWidth:360}}>
+      <h3>Entries ({entries.length})</h3>
+      <div style={{overflow:"auto",maxHeight:"65vh"}}>
+      <table><thead><tr><th>Date</th><th>Material</th><th className="num">Qty</th><th>Info</th><th>Action</th></tr></thead><tbody>
+        {entries.slice().sort((a,b)=>(b.created||0)-(a.created||0)).map(e=><tr key={e.id}>
+          <td>{e.date}</td><td>{e.code} — {e.name}</td><td className="num">{fmt(e.qty)}</td>
+          <td className="muted">{fields.map(([k])=>e[k]).filter(Boolean).join(" · ")}</td>
+          <td style={{whiteSpace:"nowrap"}}><button className="lnk" onClick={()=>edit(e)}>Edit</button><button className="lnk del" onClick={()=>del(e)}>Delete</button></td>
+        </tr>)}
+        {!entries.length&&<tr><td colSpan="5" className="muted">Koi entry nahi. Left form se add karo.</td></tr>}
+      </tbody></table>
+      </div>
+    </div>
+  </div>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+<script>
+  (function(){
+    try{
+      var src=document.getElementById("appsrc").textContent;
+      var out=Babel.transform(src,{presets:[["react",{runtime:"classic"}]],filename:"app.jsx"}).code;
+      var s=document.createElement("script"); s.textContent=out; document.body.appendChild(s);
+    }catch(e){ document.getElementById("root").innerHTML='<pre style="color:#b00;padding:20px">App error: '+e.message+'</pre>'; }
+  })();
+</script>
+</body>
+</html>
