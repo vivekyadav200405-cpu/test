@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="theme-color" content="#0c2340"/>
 <title>DX Inventory — TBDI</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -10,41 +11,115 @@
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <style>
-  :root{--navy:#0c2340;--blue:#185fa5;--green:#1d9e75;--amber:#ef9f27;--red:#d85a30;--bg:#f4f6f8;}
-  *{box-sizing:border-box} body{margin:0;font-family:Segoe UI,Arial,sans-serif;background:var(--bg);color:#1f2937}
-  .top{background:var(--navy);color:#fff;padding:12px 22px;display:flex;align-items:center;gap:14px}
-  .top h1{font-size:18px;margin:0;font-weight:700} .top .sub{font-size:12px;color:#9fb3cc}
-  .tabs{display:flex;gap:4px;background:#fff;padding:0 18px;border-bottom:1px solid #e5e7eb;position:sticky;top:0;z-index:5}
-  .tabs button{border:0;background:none;padding:13px 16px;font-size:14px;cursor:pointer;color:#555;border-bottom:3px solid transparent}
-  .tabs button.on{color:var(--blue);border-bottom-color:var(--blue);font-weight:600}
-  .wrap{padding:18px 22px;max-width:1400px;margin:auto}
-  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
-  .card{background:#fff;border-radius:12px;padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
-  .card .l{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#6b7280} .card .v{font-size:23px;font-weight:700;margin-top:3px}
-  .bar{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
-  input,select{padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px}
-  .btn{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:9px 16px;font-size:13px;cursor:pointer;font-weight:600}
-  .btn:disabled{opacity:.5}
-  table{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;font-size:13px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
-  th{background:#1f4e78;color:#fff;padding:9px 8px;text-align:left;position:sticky;top:46px}
-  td{padding:7px 8px;border-top:1px solid #eef1f5} tr:nth-child(even) td{background:#fafbfc}
-  .num{text-align:right;font-variant-numeric:tabular-nums}
-  .pill{padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap}
+  :root{--navy:#0c2340;--red:#c8102e;--blue:#185fa5;--green:#1d9e75;--amber:#ef9f27;--orange:#d85a30;
+        --bg:#eef1f5;--ink:#1f2937;--line:#e5e9ee;--muted:#8a94a6;--shadow:0 1px 3px rgba(16,35,64,.08);}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+  ::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:#c4cdd9;border-radius:8px}
+
+  /* layout */
+  .shell{display:grid;grid-template-columns:226px 1fr;min-height:100vh}
+  .side{background:linear-gradient(180deg,#0c2340,#0a1c34);color:#fff;display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
+  .brand{padding:16px 16px;display:flex;align-items:center;gap:11px;border-bottom:1px solid rgba(255,255,255,.08)}
+  .brand .logo{width:36px;height:36px;border-radius:10px;background:var(--red);display:grid;place-items:center;font-size:18px;box-shadow:0 4px 10px rgba(200,16,46,.4)}
+  .brand b{font-size:15px;display:block;line-height:1.1} .brand small{color:#9fb3cc;font-size:10.5px}
+  .nav{flex:1;padding:8px 0;overflow:auto}
+  .navitem{display:flex;align-items:center;gap:11px;padding:11px 16px;color:#c1cdde;cursor:pointer;border-left:3px solid transparent;font-size:13.5px;transition:.12s}
+  .navitem:hover{background:rgba(255,255,255,.06);color:#fff}
+  .navitem.on{background:rgba(255,255,255,.10);color:#fff;border-left-color:var(--red);font-weight:600}
+  .navitem .ic{font-size:16px;width:20px;text-align:center}
+  .navitem .cnt{margin-left:auto;font-size:11px;background:rgba(255,255,255,.12);border-radius:20px;padding:1px 8px;color:#dbe5f1}
+  .sidefoot{padding:12px 16px;border-top:1px solid rgba(255,255,255,.08);font-size:11px;color:#9fb3cc}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);margin-right:6px;box-shadow:0 0 0 3px rgba(29,158,117,.25)}
+
+  .main{min-width:0}
+  .appbar{background:#fff;border-bottom:1px solid var(--line);padding:13px 22px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:8}
+  .appbar .tt{font-size:20px}
+  .appbar h2{margin:0;font-size:18px;color:var(--navy);font-weight:700}
+  .appbar .desc{color:var(--muted);font-size:12.5px}
+  .content{padding:20px 22px;max-width:1520px}
+
+  /* cards */
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:13px;margin-bottom:16px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow);position:relative;overflow:hidden;transition:transform .12s,box-shadow .12s}
+  .card:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(16,35,64,.13)}
+  .card .ic{position:absolute;right:13px;top:12px;font-size:19px;opacity:.45}
+  .card .l{font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:600}
+  .card .v{font-size:25px;font-weight:800;margin-top:4px;color:var(--navy)}
+  .card.accent{border-top:3px solid var(--red)}
+
+  /* toolbar / inputs */
+  .toolbar{background:#fff;border:1px solid var(--line);border-radius:12px;padding:9px 11px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;box-shadow:var(--shadow)}
+  input,select{padding:9px 11px;border:1px solid #cbd5e1;border-radius:9px;font-size:13px;font-family:inherit;outline:none;transition:.12s;background:#fff}
+  input:focus,select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(24,95,165,.13)}
+  .toolbar input{flex:1;min-width:200px}
+  .btn{background:var(--blue);color:#fff;border:0;border-radius:9px;padding:9px 17px;font-size:13px;cursor:pointer;font-weight:600;transition:.12s}
+  .btn:hover{background:#14538f} .btn:disabled{opacity:.5;cursor:default}
+  .btn.green{background:var(--green)} .btn.green:hover{background:#178a64}
+  .lnk{background:#fff;border:1px solid #d0d7de;border-radius:7px;cursor:pointer;font-size:12.5px;padding:4px 10px;margin:0 2px;transition:.12s}
+  .lnk:hover{background:#eef4fb;border-color:#9fc1e6} .lnk.del:hover{background:#fbe0d6;border-color:var(--orange);color:#9c2d0c}
+
+  /* table */
+  .tablewrap{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:auto;box-shadow:var(--shadow);max-height:calc(100vh - 250px)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  thead th{position:sticky;top:0;background:#f3f6fa;color:#33415a;text-align:left;padding:10px 10px;white-space:nowrap;border-bottom:2px solid var(--line);user-select:none;cursor:pointer;font-weight:600}
+  thead th:hover{background:#e9eff6}
+  th.num{text-align:right} td.num{text-align:right;font-variant-numeric:tabular-nums}
+  td{padding:8px 10px;border-bottom:1px solid #f1f4f7;white-space:nowrap}
+  tbody tr:hover td{background:#f7fbff}
+  .sind{font-size:10px;opacity:.4;margin-left:5px}
+  .empty{padding:34px;text-align:center;color:var(--muted)}
+  .code{font-weight:600;color:var(--navy)}
+
+  .pill{padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;display:inline-block}
   .RECEIVED{background:#d6f5e6;color:#0f6e56} .PARTIAL{background:#fdeccb;color:#9c6500} .PENDING{background:#fbe0d6;color:#9c2d0c}
   .Consumable{background:#e2efda;color:#375623} .Non-Consumable{background:#ddebf7;color:#1f4e78}
-  .form{background:#fff;border-radius:12px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,.08);max-width:560px}
-  .form .row{display:flex;flex-direction:column;gap:4px;margin-bottom:12px} .form label{font-size:12px;color:#555;font-weight:600}
-  .msg{padding:8px 12px;border-radius:8px;margin-bottom:10px;font-size:13px}
+  .bar2{width:66px;height:8px;background:#eef1f5;border-radius:6px;overflow:hidden;display:inline-block;vertical-align:middle}
+  .bar2>span{display:block;height:100%;border-radius:6px}
+
+  /* form */
+  .grid2{display:grid;grid-template-columns:360px 1fr;gap:22px;align-items:start}
+  .form{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:var(--shadow)}
+  .form h3{margin:0 0 14px} .form .row{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+  .form label{font-size:12px;color:#48566b;font-weight:600} .form input,.form select{width:100%}
+  .msg{padding:8px 12px;border-radius:9px;margin-bottom:12px;font-size:13px;font-weight:500}
   .ok{background:#d6f5e6;color:#0f6e56} .err{background:#fbe0d6;color:#9c2d0c}
-  .muted{color:#9ca3af;font-size:12px}
-  .lnk{background:none;border:1px solid #d0d7de;border-radius:6px;cursor:pointer;font-size:13px;padding:3px 8px;margin:0 2px}
-  .lnk:hover{background:#eef1f5} .lnk.del:hover{background:#fbe0d6;border-color:#d85a30}
+  .muted{color:var(--muted);font-size:12px}
+  h3.sec{margin:2px 0 12px;color:var(--navy)}
+
+  /* combobox */
+  .combo{position:relative}
+  .combo .cin{width:100%;padding-right:26px}
+  .combo .clr{position:absolute;right:9px;top:50%;transform:translateY(-50%);cursor:pointer;color:#9aa6b6;font-size:17px;line-height:1}
+  .combo .pop{position:absolute;z-index:30;left:0;right:0;top:calc(100% + 5px);background:#fff;border:1px solid #d7dee6;border-radius:11px;box-shadow:0 14px 34px rgba(12,35,64,.20);max-height:290px;overflow:auto;padding:4px}
+  .opt{padding:8px 11px;cursor:pointer;font-size:12.5px;border-radius:8px;display:flex;align-items:center;gap:8px}
+  .opt.hi,.opt:hover{background:#eef5ff}
+  .opt b{color:var(--navy)} .opt .nm{color:#56627a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+
+  /* guide */
+  .gcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+  .gcard{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:var(--shadow)}
+  .gcard h4{margin:0 0 8px;color:var(--navy);display:flex;align-items:center;gap:8px}
+  .gcard p{margin:0;color:#48566b;font-size:13.5px;line-height:1.55}
+  .flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 0}
+  .flow span{background:#f3f6fa;border:1px solid var(--line);border-radius:8px;padding:6px 11px;font-size:12.5px;font-weight:600;color:var(--navy)}
+  .flow .ar{background:none;border:0;color:var(--blue);font-weight:700;padding:0}
+
+  @media(max-width:820px){
+    .shell{grid-template-columns:1fr}
+    .side{flex-direction:row;align-items:center;height:auto;overflow-x:auto;padding:4px 6px;gap:2px}
+    .brand,.sidefoot{display:none}
+    .nav{display:flex;padding:0}
+    .navitem{flex:0 0 auto;border-left:0;border-bottom:3px solid transparent;padding:9px 13px}
+    .navitem.on{border-left:0;border-bottom-color:var(--red)} .navitem .cnt{display:none}
+    .grid2{grid-template-columns:1fr}
+  }
 </style>
 </head>
 <body>
 <div id="root"></div>
 <script>
-  // ===== Firebase (TBDI project - web config is public-safe; Firestore Rules protect) =====
+  // ===== Firebase (TBDI project — web config is public-safe; Firestore Rules protect) =====
   var firebaseConfig = {
     apiKey: "AIzaSyBYbVJnJy52fGx4mLhKGBRUMdEIJg_k50w",
     authDomain: "tbdi-test-bd057.firebaseapp.com",
@@ -59,109 +134,248 @@
 <script type="text/babel-app" id="appsrc">
 const { useState, useEffect, useMemo } = React;
 const DB = window.db;
-const COLL = "dx_inventory";   // sub-collections live under this for isolation
+const COLL = "dx_inventory";
 const sub = (name) => DB.collection(COLL).doc("data").collection(name);
 const n = (x) => { const v = parseFloat(x); return isNaN(v) ? 0 : v; };
 const fmt = (x) => Math.round(n(x)).toLocaleString("en-IN");
 
 function useColl(name){
   const [rows,setRows]=useState([]);
-  useEffect(()=>{ return sub(name).onSnapshot(s=>setRows(s.docs.map(d=>({id:d.id,...d.data()})))); },[name]);
+  useEffect(()=> sub(name).onSnapshot(s=>setRows(s.docs.map(d=>({id:d.id,...d.data()})))),[name]);
   return rows;
 }
+
+// sortable hook
+function useSort(rows,initKey){
+  const [sk,setSk]=useState(initKey||null), [sd,setSd]=useState(1);
+  const sorted=useMemo(()=>{
+    if(!sk) return rows;
+    return rows.slice().sort((a,b)=>{
+      let x=a[sk], y=b[sk]; const nx=parseFloat(x), ny=parseFloat(y);
+      if(!isNaN(nx)&&!isNaN(ny)&&typeof x!=="object"){x=nx;y=ny;}
+      else {x=(x==null?"":x).toString().toLowerCase(); y=(y==null?"":y).toString().toLowerCase();}
+      return x<y?-sd:x>y?sd:0;
+    });
+  },[rows,sk,sd]);
+  const onSort=(k)=>{ if(sk===k)setSd(d=>-d); else {setSk(k);setSd(1);} };
+  return [sorted,sk,sd,onSort];
+}
+function Th({k,sk,sd,onSort,num,children}){
+  return <th className={num?"num":""} onClick={()=>onSort(k)}>{children}
+    <span className="sind">{sk===k?(sd>0?"▲":"▼"):"⇅"}</span></th>;
+}
+const typePill=(r)=> r.type ? <span className={"pill "+r.type}>{r.type}</span> : <span className="muted">—</span>;
+const statusPill=(r)=> <span className={"pill "+r.status}>{r.status}</span>;
+function Bar({pct}){
+  const c=pct>=100?"var(--green)":pct>0?"var(--amber)":"var(--orange)";
+  return <span title={pct+"% received"} style={{display:"inline-flex",alignItems:"center",gap:6}}>
+    <span className="bar2"><span style={{width:pct+"%",background:c}}/></span>
+    <span className="muted" style={{fontSize:11}}>{pct}%</span></span>;
+}
+
+// ===== searchable combobox =====
+function Combo({items,value,onChange,placeholder}){
+  const [open,setOpen]=useState(false), [q,setQ]=useState(""), [hi,setHi]=useState(0);
+  const sel=items.find(i=>i.code===value);
+  const list=useMemo(()=>{
+    const s=q.trim().toLowerCase();
+    return items.filter(i=>!s||((i.code||"")+" "+(i.name||"")+" "+(i.subname||"")).toLowerCase().includes(s)).slice(0,60);
+  },[items,q]);
+  const pick=(i)=>{ onChange(i.code); setQ(""); setOpen(false); };
+  return <div className="combo">
+    <input className="cin"
+      value={open ? q : (sel ? sel.code+" — "+(sel.name||"") : "")}
+      placeholder={placeholder||"Type to search… (code ya naam)"}
+      onFocus={()=>{setOpen(true);setQ("");setHi(0);}}
+      onChange={e=>{setQ(e.target.value);setOpen(true);setHi(0);}}
+      onBlur={()=>setTimeout(()=>setOpen(false),150)}
+      onKeyDown={e=>{
+        if(e.key==="ArrowDown"){setHi(h=>Math.min(h+1,list.length-1));e.preventDefault();}
+        else if(e.key==="ArrowUp"){setHi(h=>Math.max(h-1,0));e.preventDefault();}
+        else if(e.key==="Enter"){if(list[hi])pick(list[hi]);e.preventDefault();}
+        else if(e.key==="Escape"){setOpen(false);}
+      }}/>
+    {sel && !open && <span className="clr" onMouseDown={e=>{e.preventDefault();onChange("");}}>×</span>}
+    {open && <div className="pop">
+      {!list.length && <div className="opt muted">Kuch nahi mila</div>}
+      {list.map((i,idx)=><div key={i.code} className={"opt"+(idx===hi?" hi":"")}
+        onMouseEnter={()=>setHi(idx)} onMouseDown={e=>{e.preventDefault();pick(i);}}>
+        <b>{i.code}</b><span className="nm">{i.name}</span>
+        {i.type && <span className={"pill "+i.type} style={{transform:"scale(.82)"}}>{i.type}</span>}
+      </div>)}
+    </div>}
+  </div>;
+}
+
+// ===== generic data tab (search + type filter + sortable table) =====
+function DataTab({rows,cols,searchKeys,typeFilter,cards}){
+  const [q,setQ]=useState(""), [type,setType]=useState("All");
+  const f=rows.filter(r=>{
+    if(typeFilter && type!=="All" && r.type!==type) return false;
+    const s=q.trim().toLowerCase();
+    return !s || searchKeys.some(k=>(r[k]==null?"":r[k]).toString().toLowerCase().includes(s));
+  });
+  const [sorted,sk,sd,onSort]=useSort(f);
+  return <div>
+    {cards}
+    <div className="toolbar">
+      {typeFilter && <select value={type} onChange={e=>setType(e.target.value)}>
+        <option>All</option><option>Consumable</option><option>Non-Consumable</option></select>}
+      <input placeholder="🔍 Search…" value={q} onChange={e=>setQ(e.target.value)}/>
+      <span className="muted">{sorted.length} rows</span>
+    </div>
+    <div className="tablewrap"><table><thead><tr>
+      {cols.map(c=><Th key={c.k} k={c.k} sk={sk} sd={sd} onSort={onSort} num={c.num}>{c.label}</Th>)}
+    </tr></thead><tbody>
+      {sorted.map((r,i)=><tr key={r.id||r.code||i}>
+        {cols.map(c=><td key={c.k} className={c.num?"num":(c.cls||"")}>
+          {c.render ? c.render(r) : (c.bold ? <b>{fmt(r[c.k])}</b> : (c.num ? fmt(r[c.k]) : r[c.k]))}
+        </td>)}
+      </tr>)}
+      {!sorted.length && <tr><td colSpan={cols.length} className="empty">Koi data nahi mila.</td></tr>}
+    </tbody></table></div>
+  </div>;
+}
+
+function Cards({list}){
+  return <div className="cards">{list.map((c,i)=><div key={i} className={"card"+(c.accent?" accent":"")}>
+    <span className="ic">{c.ic}</span><div className="l">{c.l}</div>
+    <div className="v" style={c.color?{color:c.color}:null}>{c.v}</div></div>)}</div>;
+}
+
+// ===== app =====
+const NAV=[
+  ["dashboard","Dashboard","📊"],["stock","Stock","📦"],["items","Materials","🧰"],
+  ["indents","Indents","📝"],["receipts","Store Receipts","📥"],
+  ["pickup","Dept Pickup","🏭"],["usage","Usage","🔧"],["guide","Guide","📖"],
+];
+const DESC={dashboard:"Pura rollup — indent se stock tak",stock:"Current on-hand stock per material",
+  items:"Material master — naye ERP item apne aap add hote hain",indents:"Har indent jo ERP me raise hua",
+  receipts:"Store me jo physically receive hua (GRN)",pickup:"Store se department me nikala gaya stock",
+  usage:"Department me actually consume hua material",guide:"Flow aur sheets ka explanation"};
 
 function App(){
   const [tab,setTab]=useState("dashboard");
   const items=useColl("items"), indents=useColl("indents"), receipts=useColl("receipts"),
         pickups=useColl("dept_pickups"), usages=useColl("usages");
 
-  // aggregate by code
   const agg=useMemo(()=>{
     const m={};
-    const get=(c)=> m[c] || (m[c]={code:c,name:"",subname:"",type:"",uom:"",indented:0,received:0,issued:0,used:0});
-    items.forEach(i=>{const g=get(i.code);g.name=i.name||g.name;g.subname=i.subname||"";g.type=i.type||"";g.uom=i.uom||"";});
-    indents.forEach(r=>{const g=get(r.code);g.indented+=n(r.qty);if(!g.name)g.name=r.name||"";});
+    const get=(c)=> m[c] || (m[c]={code:c,name:"",subname:"",type:"",uom:"",indented:0,received:0,issued:0,used:0,first:null});
+    items.forEach(i=>{const g=get(i.code);if(i.name)g.name=i.name;if(i.subname)g.subname=i.subname;if(i.type)g.type=i.type;if(i.uom)g.uom=i.uom;});
+    indents.forEach(r=>{const g=get(r.code);g.indented+=n(r.qty);if(!g.name)g.name=r.name||"";if(r.date&&(!g.first||r.date<g.first))g.first=r.date;});
     receipts.forEach(r=>{const g=get(r.code);g.received+=n(r.qty);if(!g.name)g.name=r.name||"";});
     pickups.forEach(r=>{const g=get(r.code);g.issued+=n(r.qty);});
     usages.forEach(r=>{const g=get(r.code);g.used+=n(r.qty);});
     return Object.values(m).map(g=>({...g,
       store:g.received-g.issued, dept:g.issued-g.used, total:g.received-g.used,
       pending:Math.max(g.indented-g.received,0),
+      fillpct: g.indented>0?Math.min(100,Math.round(g.received/g.indented*100)):(g.received>0?100:0),
       status: g.received===0?"PENDING":(g.received<g.indented?"PARTIAL":"RECEIVED")
     })).sort((a,b)=>a.code.localeCompare(b.code));
   },[items,indents,receipts,pickups,usages]);
 
-  return <div>
-    <div className="top">
-      <h1>🧰 DX INVENTORY</h1>
-      <span className="sub">Toyota Boshoku — Digitalization store · live from Firebase</span>
-    </div>
-    <div className="tabs">
-      {[["dashboard","Dashboard"],["items","Materials"],["pickup","Dept Pickup"],["usage","Usage"]].map(([k,l])=>
-        <button key={k} className={tab===k?"on":""} onClick={()=>setTab(k)}>{l}</button>)}
-    </div>
-    <div className="wrap">
-      {tab==="dashboard" && <Dashboard agg={agg}/>}
-      {tab==="items" && <ItemsTab items={items}/>}
-      {tab==="pickup" && <EntryTab kind="dept_pickups" items={agg} fields={[["dept","Department"],["remarks","Remarks"]]} qtyLabel="Picked Qty"/>}
-      {tab==="usage" && <EntryTab kind="usages" items={agg} fields={[["location","Location / Where used"],["remarks","Remarks"]]} qtyLabel="Used Qty"/>}
-    </div>
+  const uomBy=useMemo(()=>{const o={};agg.forEach(a=>o[a.code]=a.uom);return o;},[agg]);
+  const cnt={dashboard:agg.length,stock:agg.length,items:items.length,indents:indents.length,
+             receipts:receipts.length,pickup:pickups.length,usage:usages.length};
+  const cur=NAV.find(x=>x[0]===tab);
+
+  return <div className="shell">
+    <aside className="side">
+      <div className="brand"><div className="logo">🧰</div><div><b>DX Inventory</b><small>Toyota Boshoku · Digitalization</small></div></div>
+      <nav className="nav">{NAV.map(([k,l,ic])=>
+        <div key={k} className={"navitem"+(tab===k?" on":"")} onClick={()=>setTab(k)}>
+          <span className="ic">{ic}</span><span>{l}</span>
+          {cnt[k]!=null && <span className="cnt">{cnt[k]}</span>}
+        </div>)}</nav>
+      <div className="sidefoot"><span className="dot"/>Live · Firebase<br/><span style={{opacity:.7}}>ERP auto-sync har 6 ghante</span></div>
+    </aside>
+    <main className="main">
+      <div className="appbar"><span className="tt">{cur[2]}</span>
+        <div><h2>{cur[1]}</h2><div className="desc">{DESC[tab]}</div></div></div>
+      <div className="content">
+        {tab==="dashboard" && <Dashboard agg={agg} nI={indents.length} nR={receipts.length}/>}
+        {tab==="stock" && <StockTab agg={agg}/>}
+        {tab==="items" && <ItemsTab items={items} agg={agg}/>}
+        {tab==="indents" && <DataTab rows={indents.map(r=>({...r,uom:uomBy[r.code]||""}))}
+          searchKeys={["date","indent_no","code","name","po","supplier"]}
+          cards={<Cards list={[
+            {l:"Total Indents",v:indents.length,ic:"📝",accent:true},
+            {l:"Total Qty",v:fmt(indents.reduce((s,r)=>s+n(r.qty),0)),ic:"🔢"},
+            {l:"Unique Items",v:new Set(indents.map(r=>r.code)).size,ic:"🧩"}]}/>}
+          cols={[{k:"date",label:"Indent Date"},{k:"indent_no",label:"Indent No"},
+            {k:"code",label:"Code",render:r=><span className="code">{r.code}</span>},{k:"name",label:"Description"},
+            {k:"uom",label:"UOM"},{k:"qty",label:"Qty",num:true,bold:true},{k:"po",label:"PO No"},{k:"supplier",label:"Supplier"}]}/>}
+        {tab==="receipts" && <DataTab rows={receipts}
+          searchKeys={["date","grn_no","code","name","po","vendor"]}
+          cards={<Cards list={[
+            {l:"Total GRNs",v:receipts.length,ic:"📥",accent:true},
+            {l:"Total Received",v:fmt(receipts.reduce((s,r)=>s+n(r.qty),0)),ic:"🔢"},
+            {l:"Unique Items",v:new Set(receipts.map(r=>r.code)).size,ic:"🧩"}]}/>}
+          cols={[{k:"date",label:"GRN Date"},{k:"grn_no",label:"GRN No"},
+            {k:"code",label:"Code",render:r=><span className="code">{r.code}</span>},{k:"name",label:"Description"},
+            {k:"qty",label:"Received Qty",num:true,bold:true},{k:"po",label:"PO No"},{k:"vendor",label:"Vendor"}]}/>}
+        {tab==="pickup" && <EntryTab kind="dept_pickups" items={agg} fields={[["dept","Department"],["remarks","Remarks"]]} qtyLabel="Picked Qty"/>}
+        {tab==="usage" && <EntryTab kind="usages" items={agg} fields={[["location","Location / Where used"],["remarks","Remarks"]]} qtyLabel="Used Qty"/>}
+        {tab==="guide" && <Guide/>}
+      </div>
+    </main>
   </div>;
 }
 
-function Dashboard({agg}){
-  const [type,setType]=useState("All"), [q,setQ]=useState("");
-  const rows=agg.filter(r=>(type==="All"||r.type===type)&&(!q||((r.code+" "+r.name+" "+r.subname).toLowerCase().includes(q.toLowerCase()))));
-  const cons=agg.filter(r=>r.type==="Consumable"), non=agg.filter(r=>r.type==="Non-Consumable");
+function Dashboard({agg,nI,nR}){
+  const cons=agg.filter(r=>r.type==="Consumable").length, non=agg.filter(r=>r.type==="Non-Consumable").length;
   const totStock=agg.reduce((s,r)=>s+r.total,0), pend=agg.filter(r=>r.pending>0).length;
-  return <div>
-    <div className="cards">
-      <div className="card"><div className="l">Materials</div><div className="v">{agg.length}</div></div>
-      <div className="card"><div className="l">Consumable</div><div className="v" style={{color:"#375623"}}>{cons.length}</div></div>
-      <div className="card"><div className="l">Non-Consumable</div><div className="v" style={{color:"#1f4e78"}}>{non.length}</div></div>
-      <div className="card"><div className="l">Total Stock (nos)</div><div className="v">{fmt(totStock)}</div></div>
-      <div className="card"><div className="l">Pending to receive</div><div className="v" style={{color:"#d85a30"}}>{pend}</div></div>
-    </div>
-    <div className="bar">
-      <select value={type} onChange={e=>setType(e.target.value)}>
-        <option>All</option><option>Consumable</option><option>Non-Consumable</option>
-      </select>
-      <input placeholder="Search code / name…" value={q} onChange={e=>setQ(e.target.value)} style={{flex:1,minWidth:180}}/>
-      <span className="muted">{rows.length} items</span>
-    </div>
-    <div style={{overflow:"auto"}}>
-    <table><thead><tr>
-      <th>Code</th><th>Name</th><th>Sub</th><th>Type</th>
-      <th className="num">Indent</th><th className="num">Received</th><th className="num">To Dept</th><th className="num">Used</th>
-      <th className="num">Store</th><th className="num">Dept</th><th className="num">Stock</th><th className="num">Pending</th><th>Status</th>
-    </tr></thead><tbody>
-      {rows.map(r=><tr key={r.code}>
-        <td>{r.code}</td><td>{r.name}</td><td>{r.subname}</td>
-        <td>{r.type&&<span className={"pill "+r.type}>{r.type}</span>}</td>
-        <td className="num">{fmt(r.indented)}</td><td className="num">{fmt(r.received)}</td>
-        <td className="num">{fmt(r.issued)}</td><td className="num">{fmt(r.used)}</td>
-        <td className="num">{fmt(r.store)}</td><td className="num">{fmt(r.dept)}</td>
-        <td className="num"><b>{fmt(r.total)}</b></td><td className="num">{fmt(r.pending)}</td>
-        <td><span className={"pill "+r.status}>{r.status}</span></td>
-      </tr>)}
-      {!rows.length&&<tr><td colSpan="13" className="muted">No data. Run the ERP sync (sync_to_firebase.py) and add materials.</td></tr>}
-    </tbody></table>
-    </div>
-  </div>;
+  return <DataTab rows={agg} typeFilter searchKeys={["code","name","subname"]}
+    cards={<Cards list={[
+      {l:"Materials",v:agg.length,ic:"🧰",accent:true},
+      {l:"Consumable",v:cons,ic:"🟢",color:"#375623"},
+      {l:"Non-Consumable",v:non,ic:"🔵",color:"#1f4e78"},
+      {l:"Total Stock",v:fmt(totStock),ic:"📦"},
+      {l:"Pending",v:pend,ic:"⏳",color:"var(--orange)"},
+      {l:"Indents",v:nI,ic:"📝"},{l:"GRNs",v:nR,ic:"📥"}]}/>}
+    cols={[
+      {k:"code",label:"Code",render:r=><span className="code">{r.code}</span>},{k:"name",label:"Name"},{k:"subname",label:"Sub"},
+      {k:"type",label:"Type",render:typePill},
+      {k:"indented",label:"Indent",num:true},{k:"received",label:"Recd",num:true},
+      {k:"fillpct",label:"Fill",render:r=><Bar pct={r.fillpct}/>},
+      {k:"issued",label:"To Dept",num:true},{k:"used",label:"Used",num:true},
+      {k:"store",label:"Store",num:true},{k:"total",label:"Stock",num:true,bold:true},
+      {k:"pending",label:"Pend",num:true},{k:"status",label:"Status",render:statusPill}]}/>;
 }
 
-function ItemsTab({items}){
-  const [f,setF]=useState({code:"",name:"",subname:"",type:"Consumable",uom:"NOS"});
-  const [m,setM]=useState(null);
+function StockTab({agg}){
+  const store=agg.reduce((s,r)=>s+r.store,0), dept=agg.reduce((s,r)=>s+r.dept,0), tot=agg.reduce((s,r)=>s+r.total,0);
+  return <DataTab rows={agg} typeFilter searchKeys={["code","name","subname"]}
+    cards={<Cards list={[
+      {l:"Total Stock",v:fmt(tot),ic:"📦",accent:true},
+      {l:"In Store",v:fmt(store),ic:"🏬",color:"var(--blue)"},
+      {l:"In Dept",v:fmt(dept),ic:"🏭",color:"var(--green)"},
+      {l:"Pending to receive",v:agg.filter(r=>r.pending>0).length,ic:"⏳",color:"var(--orange)"}]}/>}
+    cols={[
+      {k:"code",label:"Code",render:r=><span className="code">{r.code}</span>},{k:"name",label:"Name"},
+      {k:"type",label:"Type",render:typePill},{k:"uom",label:"UOM"},
+      {k:"store",label:"Store Stock",num:true},{k:"dept",label:"Dept Stock",num:true},
+      {k:"total",label:"Total Stock",num:true,bold:true},{k:"pending",label:"Pending",num:true},
+      {k:"status",label:"Status",render:statusPill}]}/>;
+}
+
+function ItemsTab({items,agg}){
+  const aggBy=useMemo(()=>{const o={};agg.forEach(a=>o[a.code]=a);return o;},[agg]);
+  const blank={code:"",name:"",subname:"",type:"Consumable",uom:"NOS"};
+  const [f,setF]=useState(blank), [m,setM]=useState(null), [q,setQ]=useState("");
   const save=async()=>{
     if(!f.code||!f.name){setM(["err","Code aur Name zaroori hai"]);return;}
     try{ await sub("items").doc(f.code.trim().toUpperCase()).set(f,{merge:true});
-      setM(["ok","Saved: "+f.code]); setF({code:"",name:"",subname:"",type:"Consumable",uom:"NOS"});
+      setM(["ok","Saved: "+f.code]); setF(blank);
     }catch(e){setM(["err",e.message]);}
   };
-  return <div style={{display:"flex",gap:24,flexWrap:"wrap"}}>
+  const rows=items.map(i=>({...i,first:(aggBy[i.code]||{}).first||"",indented:(aggBy[i.code]||{}).indented||0}))
+    .filter(i=>{const s=q.trim().toLowerCase();return !s||((i.code||"")+" "+(i.name||"")+" "+(i.subname||"")).toLowerCase().includes(s);})
+    .sort((a,b)=>(a.code||"").localeCompare(b.code||""));
+  return <div className="grid2">
     <div className="form">
-      <h3 style={{marginTop:0}}>Add / Edit Material</h3>
+      <h3>{f.code && items.find(i=>i.code===f.code)?"✏️ Edit Material":"➕ Add Material"}</h3>
       {m&&<div className={"msg "+m[0]}>{m[1]}</div>}
       <div className="row"><label>Item Code</label><input value={f.code} onChange={e=>setF({...f,code:e.target.value})}/></div>
       <div className="row"><label>Name</label><input value={f.name} onChange={e=>setF({...f,name:e.target.value})}/></div>
@@ -169,17 +383,22 @@ function ItemsTab({items}){
       <div className="row"><label>Type</label><select value={f.type} onChange={e=>setF({...f,type:e.target.value})}><option>Consumable</option><option>Non-Consumable</option></select></div>
       <div className="row"><label>Unit</label><input value={f.uom} onChange={e=>setF({...f,uom:e.target.value})}/></div>
       <button className="btn" onClick={save}>Save Material</button>
+      {f.code&&<button className="lnk" style={{marginLeft:8}} onClick={()=>{setF(blank);setM(null);}}>Clear</button>}
+      <p className="muted" style={{marginTop:12}}>Naya ERP indent hone par item yahan apne aap add ho jaata hai. Type/Sub Name tum set karo — sync me preserve rehte hain.</p>
     </div>
-    <div style={{flex:1,minWidth:320}}>
-      <h3>Materials ({items.length})</h3>
-      <div style={{overflow:"auto",maxHeight:"68vh"}}>
-      <table><thead><tr><th>Code</th><th>Name</th><th>Sub</th><th>Type</th><th>Unit</th><th>Action</th></tr></thead><tbody>
-        {items.slice().sort((a,b)=>(a.code||"").localeCompare(b.code||"")).map(i=><tr key={i.id}>
-          <td>{i.code||i.id}</td><td>{i.name}</td><td>{i.subname}</td><td>{i.type&&<span className={"pill "+i.type}>{i.type}</span>}</td><td>{i.uom}</td>
+    <div>
+      <div className="toolbar"><input placeholder="🔍 Search material…" value={q} onChange={e=>setQ(e.target.value)}/><span className="muted">{rows.length} items</span></div>
+      <div className="tablewrap"><table><thead><tr>
+        <th>Code</th><th>Name</th><th>Sub</th><th>Type</th><th>Unit</th><th>First Indent</th><th className="num">Total Indented</th><th>Action</th>
+      </tr></thead><tbody>
+        {rows.map(i=><tr key={i.id}>
+          <td><span className="code">{i.code||i.id}</span></td><td>{i.name}</td><td>{i.subname}</td>
+          <td>{typePill(i)}</td><td>{i.uom}</td><td>{(i.first||"").toString().slice(0,10)}</td><td className="num">{fmt(i.indented)}</td>
           <td style={{whiteSpace:"nowrap"}}>
-            <button className="lnk" onClick={()=>{setF({code:i.code||i.id,name:i.name||"",subname:i.subname||"",type:i.type||"Consumable",uom:i.uom||"NOS"});setM(null);}}>Edit</button>
+            <button className="lnk" onClick={()=>{setF({code:i.code||i.id,name:i.name||"",subname:i.subname||"",type:i.type||"Consumable",uom:i.uom||"NOS"});setM(null);window.scrollTo(0,0);}}>Edit</button>
             <button className="lnk del" onClick={async()=>{if(window.confirm("Delete material "+(i.code||i.id)+" ?")){try{await sub("items").doc(i.id).delete();}catch(e){alert(e.message);}}}}>Delete</button>
           </td></tr>)}
+        {!rows.length&&<tr><td colSpan="8" className="empty">Koi material nahi.</td></tr>}
       </tbody></table></div>
     </div>
   </div>;
@@ -189,9 +408,7 @@ function EntryTab({kind,items,fields,qtyLabel}){
   const entries=useColl(kind);
   const today=new Date().toISOString().slice(0,10);
   const blank={date:today,code:"",qty:""};
-  const [f,setF]=useState(blank);
-  const [editId,setEditId]=useState(null);
-  const [m,setM]=useState(null);
+  const [f,setF]=useState(blank), [editId,setEditId]=useState(null), [m,setM]=useState(null);
   const save=async()=>{
     if(!f.code||!f.qty){setM(["err","Material aur Qty zaroori hai"]);return;}
     const it=items.find(x=>x.code===f.code)||{};
@@ -202,38 +419,45 @@ function EntryTab({kind,items,fields,qtyLabel}){
       setF(blank); setEditId(null);
     }catch(e){setM(["err",e.message]);}
   };
-  const edit=(e)=>{ const o={date:e.date||today,code:e.code||"",qty:e.qty||""}; fields.forEach(([k])=>o[k]=e[k]||""); setF(o); setEditId(e.id); setM(null); };
+  const edit=(e)=>{ const o={date:e.date||today,code:e.code||"",qty:e.qty||""}; fields.forEach(([k])=>o[k]=e[k]||""); setF(o); setEditId(e.id); setM(null); window.scrollTo(0,0); };
   const del=async(e)=>{ if(!window.confirm("Delete: "+e.code+" qty "+e.qty+" ?"))return; try{await sub(kind).doc(e.id).delete();}catch(err){alert(err.message);} };
-  return <div style={{display:"flex",gap:24,flexWrap:"wrap"}}>
-    <div className="form" style={{minWidth:300}}>
-      <h3 style={{marginTop:0}}>{editId?"✏️ Edit entry":(kind==="dept_pickups"?"Dept Pickup — naya":"Usage — naya")}</h3>
+  return <div className="grid2">
+    <div className="form">
+      <h3>{editId?"✏️ Edit entry":(kind==="dept_pickups"?"🏭 Dept Pickup — naya":"🔧 Usage — naya")}</h3>
       {m&&<div className={"msg "+m[0]}>{m[1]}</div>}
       <div className="row"><label>Date</label><input type="date" value={f.date} onChange={e=>setF({...f,date:e.target.value})}/></div>
-      <div className="row"><label>Material</label>
-        <select value={f.code} onChange={e=>setF({...f,code:e.target.value})}>
-          <option value="">-- chuno --</option>
-          {items.slice().sort((a,b)=>(a.name||"").localeCompare(b.name||"")).map(i=><option key={i.code} value={i.code}>{i.code} — {i.name}</option>)}
-        </select></div>
+      <div className="row"><label>Material</label><Combo items={items} value={f.code} onChange={c=>setF({...f,code:c})}/></div>
       <div className="row"><label>{qtyLabel}</label><input type="number" value={f.qty} onChange={e=>setF({...f,qty:e.target.value})}/></div>
       {fields.map(([k,l])=><div className="row" key={k}><label>{l}</label><input value={f[k]||""} onChange={e=>setF({...f,[k]:e.target.value})}/></div>)}
       <div>
-        <button className="btn" onClick={save}>{editId?"Update":"Save"} Entry</button>
+        <button className="btn green" onClick={save}>{editId?"Update":"Save"} Entry</button>
         {editId&&<button className="lnk" style={{marginLeft:8,padding:"9px 14px"}} onClick={()=>{setF(blank);setEditId(null);}}>Cancel</button>}
       </div>
     </div>
-    <div style={{flex:1,minWidth:360}}>
-      <h3>Entries ({entries.length})</h3>
-      <div style={{overflow:"auto",maxHeight:"65vh"}}>
-      <table><thead><tr><th>Date</th><th>Material</th><th className="num">Qty</th><th>Info</th><th>Action</th></tr></thead><tbody>
+    <div>
+      <h3 className="sec">Entries ({entries.length})</h3>
+      <div className="tablewrap"><table><thead><tr><th>Date</th><th>Material</th><th className="num">Qty</th><th>Info</th><th>Action</th></tr></thead><tbody>
         {entries.slice().sort((a,b)=>(b.created||0)-(a.created||0)).map(e=><tr key={e.id}>
-          <td>{e.date}</td><td>{e.code} — {e.name}</td><td className="num">{fmt(e.qty)}</td>
+          <td>{e.date}</td><td><span className="code">{e.code}</span> {e.name}</td><td className="num">{fmt(e.qty)}</td>
           <td className="muted">{fields.map(([k])=>e[k]).filter(Boolean).join(" · ")}</td>
           <td style={{whiteSpace:"nowrap"}}><button className="lnk" onClick={()=>edit(e)}>Edit</button><button className="lnk del" onClick={()=>del(e)}>Delete</button></td>
         </tr>)}
-        {!entries.length&&<tr><td colSpan="5" className="muted">Koi entry nahi. Left form se add karo.</td></tr>}
-      </tbody></table>
-      </div>
+        {!entries.length&&<tr><td colSpan="5" className="empty">Koi entry nahi. Left form se add karo.</td></tr>}
+      </tbody></table></div>
     </div>
+  </div>;
+}
+
+function Guide(){
+  return <div className="gcards">
+    <div className="gcard"><h4>📖 Ye app kya hai</h4><p>Digitalization store ka complete inventory. ERP (goerp.ai) se apne aap banta aur har 6 ghante update hota hai. Sab data live Firebase se aata hai.</p></div>
+    <div className="gcard"><h4>🔄 Stock ka flow</h4>
+      <div className="flow"><span>Indent</span><b className="ar">→</b><span>Store In (GRN)</span><b className="ar">→</b><span>Dept Pickup</span><b className="ar">→</b><span>Usage</span><b className="ar">→</b><span>Stock</span></div>
+      <p style={{marginTop:10}}>Total Stock = Received − Used · Store = Received − Dept Pickup · Dept = Pickup − Used.</p></div>
+    <div className="gcard"><h4>🤖 ERP auto (apne aap)</h4><p><b>Materials, Indents, Store Receipts</b> — ye ERP se automatic aate hain. Naya item indent hote hi Material Master me add ho jaata hai.</p></div>
+    <div className="gcard"><h4>✍️ Manual entry</h4><p><b>Dept Pickup</b> aur <b>Usage</b> tum khud bharo — material type-to-search se chuno, qty daalo, save. Galti ho to Edit/Delete kar sakte ho.</p></div>
+    <div className="gcard"><h4>🏷️ Type set karo</h4><p>Har material ko <span className="pill Consumable">Consumable</span> ya <span className="pill Non-Consumable">Non-Consumable</span> mark karo — Materials tab se. Ye sync me preserve rehta hai.</p></div>
+    <div className="gcard"><h4>🔍 Search & sort</h4><p>Har table me search box hai aur column heading pe click karke sort kar sakte ho. Dept Pickup/Usage me material type karke filter ho jaata hai.</p></div>
   </div>;
 }
 
